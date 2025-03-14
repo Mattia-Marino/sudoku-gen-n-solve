@@ -1,0 +1,85 @@
+# Compiled Object files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+
+# Executables
+a.out
+*.out
+
+# Compiler generated files
+*.stackdump
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+# If you have extensions that create more files, add them here
+# e.g., for CppCheck, you might have:
+# !.vscode/c_cpp_properties.json
+
+# IDE: Eclipse
+.metadata/
+bin/
+
+# IDE: Code::Blocks
+*.cbp
+*.layout
+
+# IDE: JetBrains CLion
+.idea/
+*.iml
+
+# IDE: Xcode (macOS)
+*.xcodeproj/
+*.xcworkspace/
+build/
+DerivedData/
+
+# macOS system files
+.DS_Store
+
+# Windows temporary files
+*.pdb
+*.ilk
+*.suo
+*.user
+*.userosscache
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Linux temporary files
+*~
+\#*#
+
+# Other temporary files
+*.swp
+*.bak
+*.log
+
+# Dependency folder (if you use one)
+# dependencies/
+
+# Documentation files
+# *.pdf
+# *.doc
+# *.docx
+
+# Coverage files
+*.gcda
+*.gcno
+*.gcov
+coverage/
+
+# I/O files
+*.txt
+
+# Code formatting tools
+.clang-format
+checkpatch.pl
