@@ -10,6 +10,7 @@
 # Executables
 a.out
 *.out
+sudoku_generator
 
 # Compiler generated files
 *.stackdump
