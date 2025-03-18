@@ -7,10 +7,14 @@
 *.dylib
 *.a
 
+# Build directories
+**/build/
+
 # Executables
 a.out
 *.out
 sudoku_generator
+serial_solver
 
 # Compiler generated files
 *.stackdump
