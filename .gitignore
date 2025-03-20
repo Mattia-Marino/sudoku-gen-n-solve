@@ -14,7 +14,7 @@
 a.out
 *.out
 sudoku_generator
-serial_solver
+serial_sudoku_solver
 
 # Compiler generated files
 *.stackdump
