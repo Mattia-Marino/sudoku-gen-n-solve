@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "../include/sudoku.h"
-#include "../include/solver.h"
+#include "../../include/sudoku.h"
+#include "../../include/serial/solver_serial.h"
 
 int main(int argc, char **argv)
 {

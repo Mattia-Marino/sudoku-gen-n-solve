@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0 */
 
-#ifndef SOLVER_H
-#define SOLVER_H
+#ifndef SOLVER_COMM_H
+#define SOLVER_COMM_H
 
 #include "sudoku.h"
 #include "Dancing-Links/dancing-links.h"
@@ -68,20 +68,4 @@ void transformTorodialDList(struct ExactCover *ex_cover, struct Sudoku *sudoku);
  */
 void MapAnswer(struct ExactCover *ex_cover, struct Sudoku *sudoku);
 
-/**
- * @brief Recursively searches for a solution to the Exact Cover problem.
- *
- * @param ex_cover The ExactCover structure to search
- * @param sudoku The Sudoku puzzle
- * @param k The current depth in the search
- */
-void search(struct ExactCover *ex_cover, struct Sudoku *sudoku, int k);
-
-/**
- * @brief Solves a Sudoku puzzle using Dancing Links algorithm.
- *
- * @param sudoku Pointer to the Sudoku puzzle to be solved
- */
-int SudokuSolver(struct Sudoku *sudoku);
-
-#endif /* SOLVER_H */
+#endif /* SOLVER_COMM_H */
