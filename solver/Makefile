@@ -1,10 +1,10 @@
 # Compiler and flags
 CC := gcc
-CFLAGS := -Wall -Werror -std=c99
+CFLAGS := -Wall -Werror -std=c89
 LDFLAGS := -lm
 
 # Program name
-PROGRAM := sudoku_generator
+PROGRAM := serial_sudoku_solver
 
 # Allow specifying output directory from top-level Makefile
 BINDIR := .
@@ -13,9 +13,11 @@ OUTPUT := $(BINDIR)/$(PROGRAM)
 # Source files organization
 SRC_DIR := src
 BUILD_DIR := build
-OBJS := $(BUILD_DIR)/main.o \
+SERIAL_DIR := serial
+OBJS := $(BUILD_DIR)/$(SERIAL_DIR)/main.o \
 	$(BUILD_DIR)/sudoku.o \
-	$(BUILD_DIR)/solver.o \
+	$(BUILD_DIR)/solver_comm.o \
+	$(BUILD_DIR)/$(SERIAL_DIR)/solver_serial.o \
 	$(BUILD_DIR)/Dancing-Links/dancing-links.o
 
 # Handle DEBUG flag from parent Makefile
@@ -36,11 +38,11 @@ release: CFLAGS += -O3 -DNDEBUG
 release: clean $(OUTPUT)
 
 # Make sure build directories exist
-$(BUILD_DIR) $(BUILD_DIR)/Dancing-Links:
+$(BUILD_DIR) $(BUILD_DIR)/Dancing-Links $(BUILD_DIR)/$(SERIAL_DIR):
 	mkdir -p $@
 
 # Pattern rule for object files with automatic dependency generation
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR) $(BUILD_DIR)/Dancing-Links
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR) $(BUILD_DIR)/Dancing-Links $(BUILD_DIR)/$(SERIAL_DIR)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
 # Link the program
