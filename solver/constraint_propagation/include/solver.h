@@ -1,0 +1,10 @@
+int sudoku_solver(int **grid, int n);
+struct node ***extend_grid(int **grid, int n);
+void print_extended_grid(struct node ***extended_grid, int n);
+void propagate(struct node ***extended_grid, int n, int row, int col, int value);
+int simple_elimination(struct node ***extended_grid, int n, int **already_propagated);
+int hidden_singles(struct node ***extended_grid, int n);
+int check_hidden_single(struct node ***extended_grid, int n, int row, int col, int value);
+int naked_pair(struct node ***extended_grid, int n);
+int check_naked_pair(struct node ***extended_grid, int n, int row, int col);
+void free_extended_grid(struct node ***extended_grid, int n);

@@ -21,14 +21,6 @@ struct node {
 };
 
 /**
- * @brief Chooses a column randomly from the header list.
- *
- * @param head Pointer to the head of the dancing links structure
- * @return Pointer to the randomly chosen column
- */
-struct node *chooseRandomColumn(struct node *head);
-
-/**
  * @brief Chooses a column deterministically (usually the one with minimum size).
  *
  * @param head Pointer to the head of the dancing links structure
