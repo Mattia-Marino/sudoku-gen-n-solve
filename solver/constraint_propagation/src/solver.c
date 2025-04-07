@@ -408,8 +408,10 @@ int naked_pair(struct node ***extended_grid, int n)
 int check_naked_pair(struct node ***extended_grid, int n, int row, int col)
 {
 	int changed;
-	int i, j;		/* Loop variables */
+	int i, j, k, l;		/* Loop variables */
 	struct node *original_pair = extended_grid[row][col];
+	int sqrt_n;		/* Square root of n */
+	int box_row, box_col;	/* Row and column of the box */
 	
 	changed = 0;
 
@@ -459,16 +461,8 @@ int check_naked_pair(struct node ***extended_grid, int n, int row, int col)
 				/* Propagate */
 				for (j = 0; j < n; j++) {
 					if (j != row && j != i) {
-						printf("\t\t - Deleting %d and %d from [%d][%d]: ", temp->data, temp->next->data, j + 1, col + 1);
-						print_list(extended_grid[j][col]);
-						printf("\n");
-
 						extended_grid[j][col] = delete_at_given_value(extended_grid[j][col], temp->data);
 						extended_grid[j][col] = delete_at_given_value(extended_grid[j][col], temp->next->data);
-
-						printf("\t\t - Updated list: ");
-						print_list(extended_grid[j][col]);
-						printf("\n\n");
 					}
 				}
 			} else {
@@ -478,6 +472,46 @@ int check_naked_pair(struct node ***extended_grid, int n, int row, int col)
 	}
 
 	/* Check box */
+	sqrt_n = (int)sqrt(n);
+	box_row = row - (row % sqrt_n);
+	box_col = col - (col % sqrt_n);
+
+	printf("Checking box from [%d][%d] to [%d][%d] for naked pairs...\n" \
+		, box_row + 1, box_col + 1, box_row + sqrt_n, box_col + sqrt_n);
+	for (i = box_row; i < box_row + sqrt_n; i++) {
+		for (j = box_col; j < box_col + sqrt_n; j++) {
+			if (i == row && j == col)
+				continue;
+
+			struct node *temp = extended_grid[i][j];
+
+			if (temp->next != NULL && temp->next->next == NULL) {
+				printf("\tFound another pair in [%d][%d]: ", i + 1, j + 1);
+				print_list(temp);
+				printf("\n");
+
+				/* Check if same values */
+				printf("\t - Checking if same values...\n");
+				if (temp->data == original_pair->data && temp->next->data == original_pair->next->data) {
+					printf("\t - Same values\n");
+
+					changed = 1;
+
+					/* Propagate */
+					for (k = box_row; k < box_row + sqrt_n; k++) {
+						for (l = box_col; l < box_col + sqrt_n; l++) {
+							if (!((k == row && l == col) || (k == i && l == j))) {
+								extended_grid[k][l] = delete_at_given_value(extended_grid[k][l], temp->data);
+								extended_grid[k][l] = delete_at_given_value(extended_grid[k][l], temp->next->data);
+							}
+						}
+					}
+				} else {
+					printf("\t - Different values\n");
+				}
+			}
+		}
+	}
 
 	return changed;
 }
