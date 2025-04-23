@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "../../include/solver.h"
@@ -11,9 +12,15 @@
 int main(int argc, char **argv)
 {
 	char *filename;
-	int i;		/* Loop variables */
+	int i;  /* Loop variable */
+	int k;
 	int n;
 	int **grid;
+	FILE *file;
+	char *trimmed_line;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
 	clock_t start_time;
 	clock_t end_time;
 	double computation_time;
@@ -27,51 +34,79 @@ int main(int argc, char **argv)
 	/* Parse the filename from command line */
 	filename = argv[1];
 
-	/* Read the size of the Sudoku grid from the file */
-	n = read_size_from_file(filename);
-	if (n == 0) {
-		fprintf(stderr, "Error: Invalid file format\n");
-		return 1;
-	}
+	/* Open the file */
+    file = fopen(filename, "r");
+    if (file == NULL) {
+        fprintf(stderr, "Error: Could not open file %s\n", filename);
+        return 1;
+    }
 
-	/* Allocate memory for the Sudoku grid */
-	grid = create_grid(n);
-	if (grid == NULL) {
-		fprintf(stderr, "Error: Failed to allocate memory for grid\n");
-		return 1;
-	}
+    /* Process each line in the file */
+    while ((read = getline(&line, &len, file)) != -1) {
+		/* Remove newline character if present */
+        line[strcspn(line, "\r\n")] = '\0';
 
-	/* Read the Sudoku grid from the file */
-	if (read_grid_from_file(grid, filename) != 0) {
-		fprintf(stderr, "Error: Failed to read grid from file\n");
-		for (i = 0; i < n; i++) {
-			free(grid[i]);
-		}
-		free(grid);
-		return 1;
-	}
+        /* Trim the line */
+        trimmed_line = malloc(strlen(line) + 1);
+        if (trimmed_line == NULL) {
+            fprintf(stderr, "Error: Memory allocation failed\n");
+            continue;
+        }
+        k = 0;
+        for (i = 0; line[i] != '\0'; i++) {
+            if (line[i] != ' ') {
+                trimmed_line[k++] = line[i];
+            }
+        }
+        trimmed_line[k] = '\0';
 
-	/* Display the given Sudoku grid */
-	printf("\nGiven Sudoku grid:\n");
-	display_sudoku(grid, n);
-	printf("\n\n\n");
+        /* Determine the size of the grid */
+        n = (int)sqrt(strlen(trimmed_line));
+        if (n * n != strlen(trimmed_line)) {
+            fprintf(stderr, "Error: Invalid Sudoku grid format\n");
+            continue;
+        }
 
-	/* Start timing the computation */
-	start_time = clock();
+        /* Allocate memory for the Sudoku grid */
+        grid = create_grid(n);
+        if (grid == NULL) {
+            fprintf(stderr, "Error: Failed to allocate memory for grid\n");
+            continue;
+        }
 
-	printf("Solving the sudoku...\n\n");
-	sudoku_solver(grid, n);
-	printf("The proposed grid:\n");
-	display_sudoku(grid, n);
+        /* Read the grid from the line */
+        if (read_grid_from_file(grid, line) == -1) {
+            fprintf(stderr, "Error: Failed to read grid from line\n");
+            free_grid(grid, n);
+            continue;
+        }
 
-	/* End timing */
-	end_time = clock();
-	computation_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
-	printf("\nTotal computation completed in %.6f seconds.\n",
-	       computation_time);
+        /* Display the given Sudoku grid */
+        printf("\nGiven Sudoku grid:\n");
+        display_sudoku(grid, n);
+        printf("\n\n\n");
 
-	/* Free allocated memory */
-	free_grid(grid, n);
+        /* Start timing the computation */
+        start_time = clock();
 
-	return 0;
+        printf("Solving the sudoku...\n\n");
+        sudoku_solver(grid, n);
+        printf("The proposed grid:\n");
+        display_sudoku(grid, n);
+
+        /* End timing */
+        end_time = clock();
+        computation_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+        printf("\nTotal computation completed in %.6f seconds.\n",
+               computation_time);
+
+        /* Free allocated memory */
+        free_grid(grid, n);
+    }
+
+    /* Clean up */
+    free(line);
+    fclose(file);
+
+    return 0;
 }

@@ -153,6 +153,11 @@ struct node ***extend_grid(int **grid, int n)
 
 				return NULL;
 			}
+
+			/* Debugging output */
+            printf("Extended grid at [%d][%d]: ", i + 1, j + 1);
+            print_list(extended_grid[i][j]);
+            printf("\n");
 		}
 	}
 
