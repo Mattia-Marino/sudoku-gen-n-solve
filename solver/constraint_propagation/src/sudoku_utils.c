@@ -30,45 +30,26 @@ void free_grid(int **grid, int n)
 	free(grid);
 }
 
-int read_grid_from_file(int **grid, const char *line)
+int read_grid_from_file(int **grid, FILE *file, int n)
 {
-	int l, i, j; 	    /* Loop variables */
-	int k; 		        /* Index for trimmed line */
-	char *trimmed_line; /* Pointer to the trimmed line */
-	int n; 		        /* Size of the grid */
+	int i, j;
 
-    /* Remove spaces from the line */
-    trimmed_line = malloc(strlen(line) + 1);
-    k = 0;
-    for (l = 0; line[l] != '\0'; l++) {
-        if (line[l] != ' ') {
-            trimmed_line[k++] = line[l];
-        }
-    }
-    trimmed_line[k] = '\0';
+	/* Read values and fill the grid */
+	for (i = 0; i < n; i++) {
+		for (j = 0; j < n; j++) {
+			if (fscanf(file, "%d", &grid[i][j]) != 1) {
+				if (feof(file))
+					return 1;
 
-    /* Calculate the size of the grid */
-    n = (int)sqrt(strlen(trimmed_line));
-    if (n * n != strlen(trimmed_line)) {
-        fprintf(stderr, "Error: Invalid Sudoku grid format\n");
-        free(trimmed_line);
-        return -1;
-    }
+				fprintf(stderr,
+					"Error: Invalid grid data at position [%d][%d]\n",
+					i, j);
+				return -1;
+			}
+		}
+	}
 
-    /* Populate the grid */
-    for (i = 0; i < n; i++) {
-        for (j = 0; j < n; j++) {
-            grid[i][j] = trimmed_line[i * n + j] - '0'; 
-            if (grid[i][j] < 0 || grid[i][j] > 9) {
-                fprintf(stderr, "Error: Invalid character in Sudoku grid\n");
-                free(trimmed_line);
-                return -1;
-            }
-        }
-    }
-
-    free(trimmed_line);
-    return n; 
+	return 0;
 }
 
 void display_sudoku(int **grid, int n)

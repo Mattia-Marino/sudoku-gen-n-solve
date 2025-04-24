@@ -113,6 +113,7 @@ int sudoku_solver(int **grid, int n)
 
 	/* Free the extended grid */
 	free_extended_grid(extended_grid, n);
+	free_grid(already_propagated, n);
 
 	return 0;
 }
@@ -140,6 +141,7 @@ struct node ***extend_grid(int **grid, int n)
 		}
 
 		for (j = 0; j < n; j++) {
+			extended_grid[i][j] = NULL;
 			if (grid[i][j] != 0)
 				extended_grid[i][j] = append(extended_grid[i][j], grid[i][j]);
 			else
