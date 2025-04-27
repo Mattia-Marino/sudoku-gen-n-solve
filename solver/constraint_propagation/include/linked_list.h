@@ -57,6 +57,23 @@ void print_list(struct node *head);
 int get_head_value(struct node *head);
 
 /**
+ * Returns the size of the linked list.
+ *
+ * @param head Pointer to the head of the list
+ * @return The number of nodes in the list
+ */
+int size_list(struct node *head);
+
+/**
+ * Checks if two linked lists are the same.
+ *
+ * @param a Pointer to the first list
+ * @param b Pointer to the second list
+ * @return 1 if the lists are the same, 0 otherwise
+ */
+int check_same_list(struct node *a, struct node *b);
+
+/**
  * Frees the memory allocated for the linked list.
  *
  * @param head Pointer to the head of the list

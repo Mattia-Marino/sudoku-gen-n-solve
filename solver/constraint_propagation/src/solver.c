@@ -12,13 +12,29 @@ int sudoku_solver(int **grid, int n)
 	int is_changed;			/* Flag to check if any changes are made */
 	struct node ***extended_grid;	/* Extended grid for constraint propagation */
 	int counter;
-	int **already_propagated;
 	int numbers_left;
+	int depth;
+	int max_depth = 3; 
+
+	int **already_propagated_single;
+	int **already_propagated_pair;
+	int **already_propagated_triple;
+	int **selected_propagated;
+
+	/* Initialize the already_propagated grid */
+	initialize_propagation_grid(&already_propagated_single, n);
+	initialize_propagation_grid(&already_propagated_pair, n);
+	initialize_propagation_grid(&already_propagated_triple, n);
 
 	/* Create an extended grid */
 	extended_grid = extend_grid(grid, n);
 	if (extended_grid == NULL) {
 		fprintf(stderr, "Error: Unable to create extended grid\n");
+		free_grid(grid, n);
+		free(already_propagated_single);
+		free(already_propagated_pair);
+		free(already_propagated_triple);
+		
 		return -1;
 	}
 
@@ -26,51 +42,33 @@ int sudoku_solver(int **grid, int n)
 	printf("\nExtended grid:\n");
 	print_extended_grid(extended_grid, n);
 
-	/* Initialize the already_propagated array */
-	already_propagated = (int **)malloc(n * sizeof(int *));
-	if (already_propagated == NULL) {
-		fprintf(stderr, "Error: Unable to allocate memory for already_propagated matrix\n");
-		free(already_propagated);
-		free_extended_grid(extended_grid, n);
-
-		return -1;
-	}
-
-	for (i = 0; i < n; i++) {
-		already_propagated[i] = (int *)malloc(n * sizeof(int));
-		if (already_propagated[i] == NULL) {
-			fprintf(stderr, "Error: Unable to allocate memory for already_propagated row\n");
-			for (j = 0; j < i; j++) {
-				free(already_propagated[j]);
-			}
-			free(already_propagated);
-			free_extended_grid(extended_grid, n);
-
-			return -1;
-		}
-
-		for (j = 0; j < n; j++) {
-			already_propagated[i][j] = 0;
-		}
-	}
-
-	/* Print the already_propagated matrix */
-	printf("\nAlready propagated matrix:\n");
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n; j++) {
-			printf("%d ", already_propagated[i][j]);
-		}
-		printf("\n");
-	}
-
 	/* Solve the Sudoku puzzle using constraint propagation */
 	counter = 0;
 	do {
 		is_changed = 0;		/* Reset the flag for each iteration */
 
-		/* Use the technique of simple elimination */
-		printf("\nSimple elimination...\n");
-		is_changed += simple_elimination(extended_grid, n, already_propagated);
+		for (depth = 1; depth <= max_depth; ++depth) {
+			switch (depth)
+			{
+				case 1:
+					selected_propagated = already_propagated_single;
+					break;
+				case 2:
+					selected_propagated = already_propagated_pair;
+					break;
+				
+				case 3:
+					selected_propagated = already_propagated_triple;
+					break;
+
+				default:
+					break;
+			}
+
+			/* Use the technique of simple elimination */
+			printf("\nSimple elimination...\n");
+			is_changed += simple_elimination(extended_grid, n, selected_propagated, depth);
+		}
 		
 		/* Use technique of hidden singles */
 		printf("\n\nHidden singles...\n");
@@ -113,7 +111,7 @@ int sudoku_solver(int **grid, int n)
 
 	/* Free the extended grid */
 	free_extended_grid(extended_grid, n);
-	free_grid(already_propagated, n);
+	free_grid(selected_propagated, n);
 
 	return 0;
 }
@@ -180,85 +178,236 @@ void print_extended_grid(struct node ***extended_grid, int n)
 	}
 }
 
-void propagate(struct node ***extended_grid, int n, int row, int col, int value)
+void initialize_propagation_grid(int ***propagation, int n)
 {
-	int i, j;		/* Loop variables */
-	int sqrt_n;		/* Square root of n */
-	int box_row, box_col;	/* Row and column of the box */
+	int i, j;		/* Loop variable */
 
-	/* Remove the value from the same row */
-	printf("\nPropagating value %d from [%d][%d] on row %d\n", value, row + 1, col + 1, row + 1);
-	for (j = 0; j < n; j++) {
-		if (j != col) {
-			extended_grid[row][j] = delete_at_given_value(extended_grid[row][j], value);
-		}
+	*propagation = (int **)malloc(n * sizeof(int *));
+	if (*propagation == NULL) {
+		fprintf(stderr, "Error: Unable to allocate memory for propagation array\n");
+		return;
 	}
 
-	/* Remove the value from the same column */
-	printf("Propagating value %d from [%d][%d] on column %d\n", value, row + 1, col + 1, col + 1);
 	for (i = 0; i < n; i++) {
-		if (i != row) {
-			extended_grid[i][col] = delete_at_given_value(extended_grid[i][col], value);
-		}
-	}
-
-	/* Remove the value from the same box */
-	sqrt_n = (int)sqrt(n);
-	box_row = row - (row % sqrt_n);
-	box_col = col - (col % sqrt_n);
-
-	printf("Propagating value %d from [%d][%d] on box from [%d][%d] to [%d][%d]\n" \
-		, value, row + 1, col + 1, box_row + 1, box_col + 1, box_row + sqrt_n, box_col + sqrt_n);
-	for (i = box_row; i < box_row + sqrt_n; i++) {
-		for (j = box_col; j < box_col + sqrt_n; j++) {
-			if (i != row && j != col) {
-				extended_grid[i][j] = delete_at_given_value(extended_grid[i][j], value);
+		(*propagation)[i] = (int *)malloc(n * sizeof(int));
+		if ((*propagation)[i] == NULL) {
+			fprintf(stderr, "Error: Unable to allocate memory for propagation row\n");
+			for (j = 0; j < i; j++) {
+				free((*propagation)[j]);
 			}
+			free(*propagation);
+			return;
+		}
+
+		for (j = 0; j < n; j++) {
+			(*propagation)[i][j] = 0;
 		}
 	}
+
 
 }
 
-int simple_elimination(struct node ***extended_grid, int n, int **already_propagated)
+void propagate(struct node ***extended_grid, int n, struct coordinates *coord, int n_coord, int value)
+{
+	int i, j;		/* Loop variables */
+	int r, c;		/* Row and column of the box */
+	int sqrt_n;		/* Square root of n */
+
+	/* Remove the value from the same row */
+	for (i = 0; i < n; ++i) {
+		int skip = 0; /* Flag to check if current row 'i' should be skipped */
+		for (j = 0; j < n_coord; ++j) {
+		    if (i == coord[j].row) {
+			skip = 1; /* Mark this row to be skipped */
+			break;
+		    }
+		}
+		if (!skip) {
+		    for (j = 0; j < n; ++j) {
+			extended_grid[i][j] = delete_at_given_value(extended_grid[i][j], value);
+		    }
+		}
+	    }
+
+	/* Remove the value from the same column */
+	for (j = 0; j < n; ++j) {
+		int skip = 0; /* Flag to check if current column 'j' should be skipped */
+		for (i = 0; i < n_coord; ++i) {
+		    if (j == coord[i].column) {
+			skip = 1; /* Mark this column to be skipped */
+			break;
+		    }
+		}
+		if (!skip) {
+		    for (i = 0; i < n; ++i) {
+			extended_grid[i][j] = delete_at_given_value(extended_grid[i][j], value);
+		    }
+		}
+	    }
+
+	/* Remove the value from the same box */
+	sqrt_n = (int)sqrt(n);
+	for (i = 0; i < n_coord; ++i) {
+		int grid_row_start = (coord[i].row / sqrt_n) * sqrt_n;
+		int grid_col_start = (coord[i].column / sqrt_n) * sqrt_n;
+	
+		for (r = grid_row_start; r < grid_row_start + sqrt_n; ++r) {
+		    for (c = grid_col_start; c < grid_col_start + sqrt_n; ++c) {
+			/* Skip the cells that are part of the naked tuple */
+			int skip = 0;
+			for (j = 0; j < n_coord; ++j) {
+			    if (r == coord[j].row && c == coord[j].column) {
+				skip = 1;
+				break;
+			    }
+			}
+			if (!skip) {
+			    extended_grid[r][c] = delete_at_given_value(extended_grid[r][c], value);
+			}
+		    }
+		}
+	    }
+
+}
+
+int simple_elimination(struct node ***extended_grid, int n, int **already_propagated, int depth)
 {
 	int is_changed;
-	int i, j;		/* Loop variables */
-	int value;		/* Value to be propagated */
+	int i, j, k;		/* Loop variables */
+	int x;                  /* Loop variable to save the coordinates */
+	int remaining_nodes;	/* Number of nodes left in the list */
+	struct coordinates *coord;
+	struct node *candidates = NULL; /* Initialize candidates to NULL */
+	struct node *temp;
+	struct node *temp2;
+	
+	printf("\nElimination at depth %d\n", depth);
+
+	/* Set coordinates array to lenght depth */
+	coord = (struct coordinates *)malloc(depth * sizeof(struct coordinates));
+	if (coord == NULL) {
+		printf("Memory allocation failed\n");
+		return -1; /* Indicate error */
+	}
 
 	is_changed = 0;
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
-			struct node *temp = extended_grid[i][j];
+			remaining_nodes = depth;
+			candidates = NULL;
+			x = 0; /* Reset coordinate index for each potential starting node */
+
+			temp = extended_grid[i][j];
 			printf("\tAt [%d][%d]: ", i + 1, j + 1);
 			print_list(temp);
 
 			if (temp == NULL) {
 				printf("\n\t - No values left in this cell\n");
+				free_list(candidates); /* Free any potential remnants if loop continues */
 				continue;
 			}
 
-			if (is_last_node(temp)) {
-				printf("\n\t - Only one value left in this cell: %d", temp->data);
-			} else {
-				printf("\n\t - More than one value left in this cell");
+			/* Check the right depth */
+			if (size_list(temp) > depth) {
+				printf("\t\t - More than %d values in this row\n", depth);
+				free_list(candidates); /* Free any potential remnants if loop continues */
+				continue;
 			}
 
-			/* If the cell has only one value, remove it from the row and column */
-			if (is_last_node(temp) && !already_propagated[i][j]) {
-				value = temp->data;
-				
-				/* Propagate */
-				propagate(extended_grid, n, i, j, value);
+			/* If we are in this section it means we found something with a good depth */
+			printf("\t\tRight number of values\n");
 
-				already_propagated[i][j] = 1;
-				is_changed = 1;
+			if(!already_propagated[i][j]) {
+				/* Append values in candidate list */
+				temp2 = temp;
+				do {
+					candidates = append(candidates, temp2->data);
+					if (candidates == NULL) {
+						fprintf(stderr, "Failed to append node in elimination\n");
+						free(coord);
+						return -1; /* Indicate error */
+					}
+					temp2 = temp2->next;
+				} while (temp2 != NULL);
+
+				/* Save node coordinates */
+				coord[x].row = i;
+				coord[x].column = j;
+				x++;
+
+				/* Subtract from counter to signal the possible candidate */
+				printf("Remaining nodes: %d", remaining_nodes);
+				--remaining_nodes;
+				printf("...%d\n", remaining_nodes);
+
+				/* Search for other candidates if needed for the naked tuple */
+
+				for (k = i + 1; k < n && remaining_nodes != 0; ++k) {
+					temp2 = extended_grid[k][j];
+
+					printf("\t\t\tChecking if %d matches %d...", k + 1, i + 1);
+					if (check_same_list(candidates, temp2)) {
+						printf("\t...they match\n");
+
+						--remaining_nodes;
+
+						/* Save node coordinates */
+						coord[x].row = k;
+						coord[x].column = j;
+						x++;
+
+						if (remaining_nodes == 0)
+							break;
+					} else {
+						printf("\t...they DO NOT match\n");
+					}
+				}
+
+				if (remaining_nodes == 0){
+					printf("\nFound naked tuple of size %d at cell: ", depth);
+					for (k = 0; k < depth; ++k) {
+						printf("%d ", coord[k].row + 1);
+						printf("%d ", coord[k].column + 1);
+					}
+					printf("\nValues to propagate: ");
+					print_list(candidates);
+					printf("\n");
+
+					/* Propagate each value in the candidate list */
+					temp2 = candidates;
+					while (temp2 != NULL) {
+						propagate(
+							extended_grid, n, coord, depth, 
+							temp2->data); /* Pass 'depth' as n_coordinates */
+						temp2 = temp2->next;
+					}
+
+					/* Mark involved rows as propagated */
+					for (k = 0; k < depth; ++k) {
+						already_propagated[coord[k].row][coord[k].column] = 1;
+					}
+					is_changed = 1; /* Set the flag to indicate a change */
+
+					printf("\nPropagation complete.\n\n");
+				} else {
+					printf("\t\t - No naked tuple found\n");
+				}
+
+				/* Free the candidates list for the next iteration */
+				free_list(candidates); 
+				candidates = NULL; /* Ensure it's NULL for the next iteration */
 			} else {
-				printf("\n\t - Nothing to propagate here\n");
+				printf("\t\t - Already propagated\n");
+				free_list(candidates); /* Free candidates if we skip due to already propagated */
+				candidates = NULL;
 			}
-		}
+
+		} 
+		
 		printf("\n");
 	}
 
+	free(coord);
 	return is_changed;
 }
 

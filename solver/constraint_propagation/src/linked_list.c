@@ -96,6 +96,51 @@ int get_head_value(struct node *head)
 		return -1;
 }
 
+int size_list(struct node *head)
+{
+	int count;
+
+	count = 0;
+	while (head != NULL) {
+		count++;
+		head = head->next;
+	}
+
+	return count;
+}
+
+int check_same_list(struct node *a, struct node *b)
+{
+	int size_a = size_list(a);
+	int size_b = size_list(b);
+
+
+	if (size_a != size_b)
+		return 0; 
+
+	if (size_a == 0) 
+		return 1; 
+
+	struct node *temp_a = a;
+	while (temp_a != NULL) {
+		struct node *temp_b = b;
+		int found = 0;
+		while (temp_b != NULL) {
+			if (temp_a->data == temp_b->data) {
+				found = 1;
+				break;
+			}
+			temp_b = temp_b->next;
+		}
+		if (!found) {
+			return 0; 
+		}
+		temp_a = temp_a->next;
+	}
+
+	return 1;
+}
+
 void free_list(struct node *head)
 {
 	struct node *temp;
