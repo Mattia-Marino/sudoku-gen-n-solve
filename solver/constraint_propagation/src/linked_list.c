@@ -3,6 +3,58 @@
 
 #include "../include/linked_list.h"
 
+int size_list(struct node *head)
+{
+	int count;
+
+	count = 0;
+	while (head != NULL) {
+		count++;
+		head = head->next;
+	}
+
+	return count;
+}
+
+int count_different_values(struct node *a, struct node *b)
+{
+	int count;
+	int found;
+	struct node *temp_a;
+	struct node *temp_b;
+
+	/* Count elements in b that are not in a */
+	temp_b = b;
+	count = 0;
+	while (temp_b != NULL) {
+		found = 0;
+		temp_a = a;
+
+		while (temp_a != NULL) {
+			if (temp_b->data == temp_a->data) {
+				found = 1;
+				break;
+			}
+			temp_a = temp_a->next;
+		}
+
+		if (!found) {
+			printf("The element %d of b was not found in a\n", temp_b->data);
+			++count;
+		}
+		
+		temp_b = temp_b->next;
+	}
+
+	/* Return the number of elements in b not in a */
+	return count;
+}
+
+int is_last_node(struct node *node)
+{
+	return (node->next == NULL);
+}
+
 struct node *create_node(int data)
 {
 	struct node *new_node = (struct node *)malloc(sizeof(struct node));
@@ -75,9 +127,33 @@ struct node *delete_all_but_head(struct node *head)
 	return head;
 }
 
-int is_last_node(struct node *node)
+struct node *add_new_candidates(struct node *candidates, struct node *new)
 {
-	return (node->next == NULL);
+	int found;
+	struct node *temp_old;
+	struct node *temp_new;
+
+	temp_new = new;
+	while (temp_new != NULL) {
+		found = 0;
+		temp_old = candidates;
+
+		while (temp_old != NULL) {
+			if (temp_old->data == temp_new->data) {
+				found = 1;
+				break;
+			}
+
+			temp_old = temp_old->next;
+		}
+
+		if (!found)
+			candidates = append(candidates, temp_new->data);
+		
+		temp_new = temp_new->next;
+	}
+
+	return candidates;
 }
 
 void print_list(struct node *node)
@@ -88,6 +164,7 @@ void print_list(struct node *node)
 	}
 }
 
+/*
 int get_head_value(struct node *head)
 {
 	if (head != NULL)
@@ -95,6 +172,7 @@ int get_head_value(struct node *head)
 	else
 		return -1;
 }
+		*/
 
 void free_list(struct node *head)
 {
@@ -106,29 +184,3 @@ void free_list(struct node *head)
 		free(temp);
 	}
 }
-
-/*
-int main(int argc, char **argv)
-{
-	struct node *head;
-
-	head = NULL;
-	head = append(head, 1);
-	head = append(head, 2);
-	head = append(head, 3);
-
-	printf("List: ");
-	print_list(head);
-	printf("NULL\n");
-
-	head = delete_at_given_value(head, 1);
-
-	printf("After deletion: ");
-	print_list(head);
-	printf("NULL\n");
-
-	free_list(head);
-
-	return 0;
-}
-	*/

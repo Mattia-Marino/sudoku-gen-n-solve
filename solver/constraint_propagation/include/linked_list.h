@@ -11,6 +11,18 @@ struct node {
 	struct node *next;	/* Pointer to the next node */
 };
 
+int size_list(struct node *head);
+
+int count_different_values(struct node *a, struct node *b);
+
+/**
+ * Checks if a node is the last one in the list.
+ *
+ * @param node Pointer to the node to check
+ * @return 1 if the node is the last one in the list, 0 otherwise
+ */
+int is_last_node(struct node *node);
+
 /**
  * Creates a new node with the specified data.
  *
@@ -39,13 +51,7 @@ struct node *delete_at_given_value(struct node *head, int value);
 
 struct node *delete_all_but_head(struct node *head);
 
-/**
- * Checks if a node is the last one in the list.
- *
- * @param node Pointer to the node to check
- * @return 1 if the node is the last one in the list, 0 otherwise
- */
-int is_last_node(struct node *node);
+struct node *add_new_candidates(struct node *candidates, struct node *new);
 
 /**
  * Prints all elements of the linked list.
@@ -54,7 +60,9 @@ int is_last_node(struct node *node);
  */
 void print_list(struct node *head);
 
+/*
 int get_head_value(struct node *head);
+*/
 
 /**
  * Frees the memory allocated for the linked list.
