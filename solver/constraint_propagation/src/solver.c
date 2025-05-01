@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../include/debug.h"
 #include "../include/linked_list.h"
 #include "../include/solver.h"
 #include "../include/sudoku_utils.h"
@@ -23,7 +24,7 @@ int sudoku_solver(int **grid, int n)
 
 	/* TODO: Add checks for errors */
 	max_depth = (int)floor((double)n / 2);
-	printf("Max depth: %d\n\n", max_depth);
+	DPRINTF("Max depth: %d\n\n", max_depth);
 	already_propagated_rows = (int ***)malloc(max_depth * sizeof(int **));
 	for (i = 0; i < max_depth; ++i) {
 		already_propagated_rows[i] = (int **)malloc(n * sizeof(int *));
@@ -59,8 +60,8 @@ int sudoku_solver(int **grid, int n)
 	}
 
 	/* Print the extended grid */
-	printf("\nExtended grid:\n");
-	print_extended_grid(extended_grid, n);	
+	DPRINTF("\nExtended grid:\n");
+	DPRINT_EXTENDED_GRID(extended_grid, n);	
 
 	/* Solve the Sudoku puzzle using constraint propagation */
 	counter = 0;
@@ -73,35 +74,35 @@ int sudoku_solver(int **grid, int n)
 			is_changed += naked_candidates_rows(extended_grid,
 				n, selected_propagated, depth);
 			
-			printf("\n\nPropagation at depth (row): %d\n", depth);
-			print_extended_grid(extended_grid, n);
-			printf("\n\n\n");
+			DPRINTF("\n\nPropagation at depth (row): %d\n", depth);
+			DPRINT_EXTENDED_GRID(extended_grid, n);
+			DPRINTF("\n\n\n");
 
 			selected_propagated = already_propagated_columns[depth - 1];
 			is_changed += naked_candidates_columns(extended_grid,
 				n, selected_propagated, depth);
 		
-			printf("\n\nPropagation at depth (col): %d\n", depth);
-			print_extended_grid(extended_grid, n);
-			printf("\n\n\n");
+			DPRINTF("\n\nPropagation at depth (col): %d\n", depth);
+			DPRINT_EXTENDED_GRID(extended_grid, n);
+			DPRINTF("\n\n\n");
 			
 			selected_propagated = already_propagated_boxes[depth - 1];
 			is_changed += naked_candidates_boxes(extended_grid,
 				n, selected_propagated, depth);
 			
-			printf("\n\nPropagation at depth (box): %d\n", depth);
-			print_extended_grid(extended_grid, n);
-			printf("\n\n\n");
+			DPRINTF("\n\nPropagation at depth (box): %d\n", depth);
+			DPRINT_EXTENDED_GRID(extended_grid, n);
+			DPRINTF("\n\n\n");
 		}
 
 		/* Use technique of hidden singles */
-		printf("\n\nHidden singles...\n");
+		DPRINTF("\n\nHidden singles...\n");
 		is_changed += hidden_singles(extended_grid, n);
 
 		/* Print the updated extended grid */
-		printf("\nIteration %d - updated extended grid:\n", ++counter);
-		print_extended_grid(extended_grid, n);
-		printf("\n\n\n");
+		DPRINTF("\nIteration %d - updated extended grid:\n", ++counter);
+		DPRINT_EXTENDED_GRID(extended_grid, n);
+		DPRINTF("\n\n\n");
 	} while (is_changed);
 
 	/* Count numbers left for progress */
@@ -185,9 +186,9 @@ struct node ***extend_grid(int **grid, int n)
 			}
 
 			/* Debugging output */
-			printf("Extended grid at [%d][%d]: ", i + 1, j + 1);
-			print_list(extended_grid[i][j]);
-			printf("\n");
+			DPRINTF("Extended grid at [%d][%d]: ", i + 1, j + 1);
+			DPRINT_LIST(extended_grid[i][j]);
+			DPRINTF("\n");
 		}
 	}
 
@@ -217,13 +218,13 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 	struct node *temp2;
 	struct coordinates *coord;
 
-	printf("\nElimination of naked candidates (row) at depth %d\n", depth);
+	DPRINTF("\nElimination of naked candidates (row) at depth %d\n", depth);
 
 	/* Set coordinates array to lenght depth */
 	coord = (struct coordinates *)malloc(depth *
 					     sizeof(struct coordinates));
 	if (coord == NULL) {
-		printf("Memory allocation failed\n");
+		fprintf(stderr, "Memory allocation failed\n");
 		return -1; /* Indicate error */
 	}
 
@@ -237,18 +238,18 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 			l = 0; /* Reset coordinate index for each potential starting node 'i' */
 
 			temp = extended_grid[i][j];
-			printf("\tAt cell [%d][%d]: ", i + 1, j + 1);
-			print_list(temp);
-			printf("\n");
+			DPRINTF("\tAt cell [%d][%d]: ", i + 1, j + 1);
+			DPRINT_LIST(temp);
+			DPRINTF("\n");
 
 			if (temp == NULL) {
-				printf("\t\t - No values in this cell\n");
+				DPRINTF("\t\t - No values in this cell\n");
 				continue;
 			}
 
 			/* Check the right depth */
 			if (size_list(temp) > depth) {
-				printf("\t\t - More than %d values in this cell\n",
+				DPRINTF("\t\t - More than %d values in this cell\n",
 				       depth);
 				continue;
 			}
@@ -258,7 +259,7 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 				continue;
 
 			/* If we are in this section of the code it means we found something with a good depth */
-			printf("\t\tRight number of values\n");
+			DPRINTF("\t\tRight number of values\n");
 
 			/* Check if already propagated */
 			if (!already_propagated[i][j]) {
@@ -280,9 +281,9 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 				l++;
 
 				/* Subtract from counter to signal the possible candidate */
-				printf("Remaining nodes: %d", remaining_nodes);
+				DPRINTF("Remaining nodes: %d", remaining_nodes);
 				--remaining_nodes;
-				printf("...%d\n", remaining_nodes);
+				DPRINTF("...%d\n", remaining_nodes);
 
 				/* If needed for the tuple, search for other candidates on the row */
 				for (k = j + 1; k < n && remaining_nodes != 0; ++k) {
@@ -293,14 +294,14 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 					temp = extended_grid[i][k];
 					n_difference = count_different_values(candidates, extended_grid[i][k]);
 	
-					printf("\t\t\tCell [%d][%d] - Difference: %d\n", i + 1, k + 1, n_difference);
+					DPRINTF("\t\t\tCell [%d][%d] - Difference: %d\n", i + 1, k + 1, n_difference);
 	
 					if ((size_list(candidates) + n_difference) <= depth) {
 						/* Add new values to candidates */
-						printf("\t\t\tAdding new candidates to list...");
+						DPRINTF("\t\t\tAdding new candidates to list...");
 						candidates = add_new_candidates(candidates, extended_grid[i][k]);
-						print_list(candidates);
-						printf("\n\n");
+						DPRINT_LIST(candidates);
+						DPRINTF("\n\n");
 	
 						coord[l].row = i;
 						coord[l].column = k;
@@ -314,13 +315,13 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 
 				if (remaining_nodes == 0) {
 					/* Found a complete naked tuple of size 'depth' */
-					printf("\nFound naked tuple of size %d at cells: ", depth);
+					DPRINTF("\nFound naked tuple of size %d at cells: ", depth);
 					for (l = 0; l < depth; ++l) {
-						printf("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
+						DPRINTF("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
 					}
-					printf("\nValues to propagate: ");
-					print_list(candidates);
-					printf("\n");
+					DPRINTF("\nValues to propagate: ");
+					DPRINT_LIST(candidates);
+					DPRINTF("\n");
 	
 					/* Propagate each value in the candidates list */
 					temp2 = candidates;
@@ -337,17 +338,17 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 					}
 					changed = 1; /* Signal that at least a change occurred */
 	
-					printf("\nPropagation complete.\n\n");
+					DPRINTF("\nPropagation complete.\n\n");
 				} else {
 					/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
-					printf("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
+					DPRINTF("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
 					       i + 1, j + 1);
 				}
 
 				/* Free the candidates list for the next iteration */
 				free_list(candidates);
 			} else {
-				printf("\t - Cell [%d][%d] already propagated\n",
+				DPRINTF("\t - Cell [%d][%d] already propagated\n",
 				       i + 1, j + 1);
 				free_list(candidates); /* Free candidates if we skip due to already propagated */
 			}
@@ -355,7 +356,7 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 	}
 
 	free(coord);
-	printf("\n");
+	DPRINTF("\n");
 
 	return changed;
 }
@@ -374,13 +375,13 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 	struct node *temp2;
 	struct coordinates *coord;
 
-	printf("\nElimination of naked candidates (column) at depth %d\n", depth);
+	DPRINTF("\nElimination of naked candidates (column) at depth %d\n", depth);
 
 	/* Set coordinates array to lenght depth */
 	coord = (struct coordinates *)malloc(depth *
 					     sizeof(struct coordinates));
 	if (coord == NULL) {
-		printf("Memory allocation failed\n");
+		fprintf(stderr, "Memory allocation failed\n");
 		return -1; /* Indicate error */
 	}
 
@@ -394,18 +395,18 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 			l = 0; /* Reset coordinate index for each potential starting node 'i' */
 
 			temp = extended_grid[i][j];
-			printf("\tAt cell [%d][%d]: ", i + 1, j + 1);
-			print_list(temp);
-			printf("\n");
+			DPRINTF("\tAt cell [%d][%d]: ", i + 1, j + 1);
+			DPRINT_LIST(temp);
+			DPRINTF("\n");
 
 			if (temp == NULL) {
-				printf("\t\t - No values in this cell\n");
+				DPRINTF("\t\t - No values in this cell\n");
 				continue;
 			}
 
 			/* Check the right depth */
 			if (size_list(temp) > depth) {
-				printf("\t\t - More than %d values in this cell\n",
+				DPRINTF("\t\t - More than %d values in this cell\n",
 				       depth);
 				continue;
 			}
@@ -415,7 +416,7 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 				continue;
 
 			/* If we are in this section of the code it means we found something with a good depth */
-			printf("\t\tRight number of values\n");
+			DPRINTF("\t\tRight number of values\n");
 
 			/* Check if already propagated */
 			if (!already_propagated[i][j]) {
@@ -437,9 +438,9 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 				l++;
 
 				/* Subtract from counter to signal the possible candidate */
-				printf("Remaining nodes: %d", remaining_nodes);
+				DPRINTF("Remaining nodes: %d", remaining_nodes);
 				--remaining_nodes;
-				printf("...%d\n", remaining_nodes);
+				DPRINTF("...%d\n", remaining_nodes);
 
 				/* If needed for the tuple, search for other candidates on the column */
 				for (k = i + 1; k < n && remaining_nodes != 0; ++k) {
@@ -450,14 +451,14 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 					temp = extended_grid[k][j];
 					n_difference = count_different_values(candidates, extended_grid[k][j]);
 	
-					printf("\t\t\tCell [%d][%d] - Difference: %d\n", k + 1, j + 1, n_difference);
+					DPRINTF("\t\t\tCell [%d][%d] - Difference: %d\n", k + 1, j + 1, n_difference);
 	
 					if ((size_list(candidates) + n_difference) <= depth) {
 						/* Add new values to candidates */
-						printf("\t\t\tAdding new candidates to list...");
+						DPRINTF("\t\t\tAdding new candidates to list...");
 						candidates = add_new_candidates(candidates, extended_grid[k][j]);
-						print_list(candidates);
-						printf("\n\n");
+						DPRINT_LIST(candidates);
+						DPRINTF("\n\n");
 	
 						coord[l].row = k;
 						coord[l].column = j;
@@ -471,13 +472,13 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 
 				if (remaining_nodes == 0) {
 					/* Found a complete naked tuple of size 'depth' */
-					printf("\nFound naked tuple of size %d at cells: ", depth);
+					DPRINTF("\nFound naked tuple of size %d at cells: ", depth);
 					for (l = 0; l < depth; ++l) {
-						printf("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
+						DPRINTF("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
 					}
-					printf("\nValues to propagate: ");
-					print_list(candidates);
-					printf("\n");
+					DPRINTF("\nValues to propagate: ");
+					DPRINT_LIST(candidates);
+					DPRINTF("\n");
 	
 					/* Propagate each value in the candidates list */
 					temp2 = candidates;
@@ -494,17 +495,17 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 					}
 					changed = 1; /* Signal that at least a change occurred */
 	
-					printf("\nPropagation complete.\n\n");
+					DPRINTF("\nPropagation complete.\n\n");
 				} else {
 					/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
-					printf("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
+					DPRINTF("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
 					       i + 1, j + 1);
 				}
 
 				/* Free the candidates list for the next iteration */
 				free_list(candidates);
 			} else {
-				printf("\t - Cell [%d][%d] already propagated\n",
+				DPRINTF("\t - Cell [%d][%d] already propagated\n",
 				       i + 1, j + 1);
 				free_list(candidates); /* Free candidates if we skip due to already propagated */
 			}
@@ -512,7 +513,7 @@ int naked_candidates_columns(struct node ***extended_grid, int n,
 	}
 
 	free(coord);
-	printf("\n");
+	DPRINTF("\n");
 
 	return changed;
 }
@@ -536,13 +537,13 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 	int row_start, col_start;
 	int given_row, given_col;
 
-	printf("\nElimination of naked candidates (box) at depth %d\n", depth);
+	DPRINTF("\nElimination of naked candidates (box) at depth %d\n", depth);
 
 	/* Set coordinates array to lenght depth */
 	coord = (struct coordinates *)malloc(depth *
 					     sizeof(struct coordinates));
 	if (coord == NULL) {
-		printf("Memory allocation failed\n");
+		fprintf(stderr, "Memory allocation failed\n");
 		return -1; /* Indicate error */
 	}
 
@@ -563,18 +564,18 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 					l = 0; /* Reset coordinate index for each potential starting node 'i' */
 
 					temp = extended_grid[i][j];
-					printf("\tAt cell [%d][%d]: ", i + 1, j + 1);
-					print_list(temp);
-					printf("\n");
+					DPRINTF("\tAt cell [%d][%d]: ", i + 1, j + 1);
+					DPRINT_LIST(temp);
+					DPRINTF("\n");
 
 					if (temp == NULL) {
-						printf("\t\t - No values in this cell\n");
+						DPRINTF("\t\t - No values in this cell\n");
 						continue;
 					}
 
 					/* Check the right depth */
 					if (size_list(temp) > depth) {
-						printf("\t\t - More than %d values in this cell\n",
+						DPRINTF("\t\t - More than %d values in this cell\n",
 						depth);
 						continue;
 					}
@@ -584,7 +585,7 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 						continue;
 
 					/* If we are in this section of the code it means we found something with a good depth */
-					printf("\t\tRight number of values\n");
+					DPRINTF("\t\tRight number of values\n");
 
 					/* Check if already propagated */
 					if (!already_propagated[i][j]) {
@@ -606,9 +607,9 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 						l++;
 
 						/* Subtract from counter to signal the possible candidate */
-						printf("Remaining nodes: %d", remaining_nodes);
+						DPRINTF("Remaining nodes: %d", remaining_nodes);
 						--remaining_nodes;
-						printf("...%d\n", remaining_nodes);
+						DPRINTF("...%d\n", remaining_nodes);
 
 						given_row = i;
 						given_col = j;
@@ -624,14 +625,14 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 									temp = extended_grid[k][m];
 									n_difference = count_different_values(candidates, extended_grid[k][m]);
 					
-									printf("\t\t\tCell [%d][%d] - Difference: %d\n", k + 1, m + 1, n_difference);
+									DPRINTF("\t\t\tCell [%d][%d] - Difference: %d\n", k + 1, m + 1, n_difference);
 					
 									if ((size_list(candidates) + n_difference) <= depth) {
 										/* Add new values to candidates */
-										printf("\t\t\tAdding new candidates to list...");
+										DPRINTF("\t\t\tAdding new candidates to list...");
 										candidates = add_new_candidates(candidates, extended_grid[k][m]);
-										print_list(candidates);
-										printf("\n\n");
+										DPRINT_LIST(candidates);
+										DPRINTF("\n\n");
 					
 										coord[l].row = k;
 										coord[l].column = m;
@@ -651,13 +652,13 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 
 						if (remaining_nodes == 0) {
 							/* Found a complete naked tuple of size 'depth' */
-							printf("\nFound naked tuple of size %d at cells: ", depth);
+							DPRINTF("\nFound naked tuple of size %d at cells: ", depth);
 							for (l = 0; l < depth; ++l) {
-								printf("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
+								DPRINTF("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
 							}
-							printf("\nValues to propagate: ");
-							print_list(candidates);
-							printf("\n");
+							DPRINTF("\nValues to propagate: ");
+							DPRINT_LIST(candidates);
+							DPRINTF("\n");
 			
 							/* Propagate each value in the candidates list */
 							temp2 = candidates;
@@ -674,17 +675,17 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 							}
 							changed = 1; /* Signal that at least a change occurred */
 			
-							printf("\nPropagation complete.\n\n");
+							DPRINTF("\nPropagation complete.\n\n");
 						} else {
 							/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
-							printf("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
+							DPRINTF("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
 							i + 1, j + 1);
 						}
 
 						/* Free the candidates list for the next iteration */
 						free_list(candidates);
 					} else {
-						printf("\t - Cell [%d][%d] already propagated\n",
+						DPRINTF("\t - Cell [%d][%d] already propagated\n",
 						i + 1, j + 1);
 						free_list(candidates); /* Free candidates if we skip due to already propagated */
 					}
@@ -694,7 +695,7 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 	}
 
 	free(coord);
-	printf("\n");
+	DPRINTF("\n");
 
 	return changed;
 }
@@ -707,7 +708,7 @@ void propagate_row(struct node ***extended_grid, int n,
 		coord[0].row; /* Propagating only the row, the value will be same for all coords */
 	int skip;
 
-	printf("\nPropagating value %d on row %d\n", value, row + 1);
+	DPRINTF("\nPropagating value %d on row %d\n", value, row + 1);
 
 	for (i = 0; i < n; ++i) {
 		skip = 0; /* Flag to check if current cell [row][i] should be skipped */
@@ -735,7 +736,7 @@ void propagate_column(struct node ***extended_grid, int n,
 		coord[0].column; /* Propagating only the column, the value will be same for all coords */
 	int skip;
 
-	printf("\nPropagating value %d on column %d\n", value, column + 1);
+	DPRINTF("\nPropagating value %d on column %d\n", value, column + 1);
 
 	for (i = 0; i < n; ++i) {
 		skip = 0; /* Flag to check if current cell [i][column] should be skipped */
@@ -769,7 +770,7 @@ void propagate_box(struct node ***extended_grid, int n,
 	row_start = (coord[0].row / sqrt_n) * sqrt_n;
         col_start = (coord[0].column / sqrt_n) * sqrt_n; 
 
-	printf("\nPropagating value %d in its box\n", value);
+	DPRINTF("\nPropagating value %d in its box\n", value);
 
 	for (i = row_start; i < row_start + sqrt_n; ++i) {
 		for (j = col_start; j < col_start + sqrt_n; ++j) {
@@ -804,7 +805,7 @@ int hidden_singles(struct node ***extended_grid, int n)
 
 			/* If already a single value, go to next cell */
 			if (temp->next == NULL) {
-				printf("\tAt [%d][%d] already a single value: %d\n",
+				DPRINTF("\tAt [%d][%d] already a single value: %d\n",
 				       i + 1, j + 1, temp->data);
 				continue;
 			}
@@ -813,18 +814,18 @@ int hidden_singles(struct node ***extended_grid, int n)
 			flag = 0;
 			while (temp != NULL) {
 				value = temp->data;
-				printf("\tAt [%d][%d] - checking value %d\n",
+				DPRINTF("\tAt [%d][%d] - checking value %d\n",
 				       i + 1, j + 1, value);
 
 				flag = check_hidden_single(extended_grid, n, i,
 							   j, value);
 
 				if (!flag) {
-					printf("\t - Value %d is a hidden single\n",
+					DPRINTF("\t - Value %d is a hidden single\n",
 					       value);
 					break;
 				} else {
-					printf("\t - Copy found, value %d is not a hidden single, going to next node\n",
+					DPRINTF("\t - Copy found, value %d is not a hidden single, going to next node\n",
 					       value);
 				}
 
@@ -839,7 +840,7 @@ int hidden_singles(struct node ***extended_grid, int n)
 				is_changed = 1;
 			}
 
-			printf("\n");
+			DPRINTF("\n");
 		}
 	}
 

@@ -1,3 +1,5 @@
+#ifndef SOLVER_H
+#define SOLVER_H
 struct coordinates {
 	int row;
 	int column;
@@ -43,3 +45,5 @@ void print_extended_grid(struct node ***extended_grid, int n);
 void free_extended_grid(struct node ***extended_grid, int n);
 
 void free_propagation_matrix(int ***propagation, int n);
+
+#endif /* SOLVER_H */
