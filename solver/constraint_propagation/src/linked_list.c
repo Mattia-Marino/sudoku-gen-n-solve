@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../include/debug.h"
 #include "../include/linked_list.h"
 
 int size_list(struct node *head)
@@ -39,7 +40,7 @@ int count_different_values(struct node *a, struct node *b)
 		}
 
 		if (!found) {
-			printf("The element %d of b was not found in a\n", temp_b->data);
+			DPRINTF("The element %d of b was not found in a\n", temp_b->data);
 			++count;
 		}
 		

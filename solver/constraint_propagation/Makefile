@@ -47,7 +47,7 @@ parallel: $(PARALLEL_OUTPUT)
 
 # Build configurations
 debug: CFLAGS += -g -DDEBUG
-debug: clean serial parallel
+debug: clean serial
 
 release: CFLAGS += -O3 -DNDEBUG
 release: clean serial parallel
