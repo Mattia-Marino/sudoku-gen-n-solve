@@ -13,7 +13,6 @@ int sudoku_solver(int **grid, int n)
 	int is_changed; /* Flag to check if any changes are made */
 	int depth;
 	int max_depth;
-	int counter;
 	int numbers_left;
 	struct node ***extended_grid; /* Extended grid for constraint propagation */
 
@@ -64,7 +63,6 @@ int sudoku_solver(int **grid, int n)
 	DPRINT_EXTENDED_GRID(extended_grid, n);	
 
 	/* Solve the Sudoku puzzle using constraint propagation */
-	counter = 0;
 	do {
 		is_changed = 0; /* Reset the flag for each iteration */
 
@@ -100,7 +98,7 @@ int sudoku_solver(int **grid, int n)
 		is_changed += hidden_singles(extended_grid, n);
 
 		/* Print the updated extended grid */
-		DPRINTF("\nIteration %d - updated extended grid:\n", ++counter);
+		DPRINTF("\nUpdated extended grid:\n");
 		DPRINT_EXTENDED_GRID(extended_grid, n);
 		DPRINTF("\n\n\n");
 	} while (is_changed);
@@ -116,12 +114,11 @@ int sudoku_solver(int **grid, int n)
 			}
 		}
 	}
-	printf("Numbers left in the extended grid: %d\n", numbers_left);
-	printf("Progress: %2.1f%%\n",
+	DPRINTF("Numbers left in the extended grid: %d\n", numbers_left);
+	DPRINTF("Progress: %2.1f%%\n",
 	       (double)((double)1 - (double)(numbers_left - n * n) /
 					    (double)((n * n * n) - (n * n))) *
 		       100);
-	printf("Total iterations: %d\n\n", counter);
 
 	/* Fill the original grid with single values */
 	for (i = 0; i < n; i++) {

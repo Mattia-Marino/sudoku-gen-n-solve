@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "../../include/debug.h"
 #include "../../include/solver.h"
 #include "../../include/sudoku_utils.h"
 
@@ -15,7 +16,6 @@ int main(int argc, char **argv)
 	int n;
 	int sqrt_n;
 	int read_status;
-	int counter;
 	int tot_solved;
 	int **grid;
 	FILE *file;
@@ -57,7 +57,6 @@ int main(int argc, char **argv)
 	/* Start timing the computation */
 	start_time = clock();
 
-	counter = 0;
 	tot_solved = 0;
 	while (1) {
 		/* Allocate memory for the Sudoku grid */
@@ -74,7 +73,7 @@ int main(int argc, char **argv)
 		if (read_status != 0) {
 			/* If read failed because we reached EOF */
 			if (feof(file)) {
-				printf("Reached EOF\n");
+				DPRINTF("Reached EOF\n");
 				break;
 			} else {
 				fprintf(stderr, "Error: Failed to read grid from file\n");
@@ -85,19 +84,17 @@ int main(int argc, char **argv)
 		}
 
 		/* Display the given Sudoku grid */
-		printf("\nGiven Sudoku grid:\n");
-		display_sudoku(grid, n);
-		printf("\n\n\n");
+		DPRINTF("\nGiven Sudoku grid:\n");
+		DPRINT_SUDOKU(grid, n);
+		DPRINTF("\n\n\n");
 
 		/* Solve the sudoku */
-		printf("Solving the sudoku...\n\n");
+		DPRINTF("Solving the sudoku...\n\n");
 		sudoku_solver(grid, n);
-		printf("The proposed grid:\n");
-		display_sudoku(grid, n);
+		DPRINTF("The proposed grid:\n");
+		DPRINT_SUDOKU(grid, n);
 
-		printf("\nSudoku %d completed\n", ++counter);
-
-		printf("\n\n--------------------\n\n");
+		DPRINTF("\n\n--------------------\n\n");
 
 		if (check_solved(grid, n))
 			++tot_solved;
@@ -112,7 +109,7 @@ int main(int argc, char **argv)
 	printf("\nTotal computation completed in %.6f seconds.\n",
 	       computation_time);
 
-	printf("\nSudokus completely solved: %d\n\n", tot_solved);
+	printf("Sudokus completely solved: %d\n\n", tot_solved);
 
 	/* Free allocated resources */
 	fclose(file);

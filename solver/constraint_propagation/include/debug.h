@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include "linked_list.h"
 #include "solver.h"
+#include "sudoku_utils.h"
 
 /* DPRINTF: Prints debug messages */
 #define DPRINTF(...) printf(__VA_ARGS__)
@@ -20,12 +21,16 @@
  */
 #define DPRINT_EXTENDED_GRID(...) print_extended_grid(__VA_ARGS__)
 
+/* DPRINT_SUDOKU: Prints the sudoku grid */
+#define DPRINT_SUDOKU(...) display_sudoku(__VA_ARGS__)
+
 #else
 
 /* Define macros as empty statements when DEBUG is not defined */
 #define DPRINTF(...) do {} while (0)
 #define DPRINT_LIST(...) do {} while (0)
 #define DPRINT_EXTENDED_GRID(...) do {} while (0)
+#define DPRINT_SUDOKU(...) do {} while (0)
 
 #endif
 
