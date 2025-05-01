@@ -30,6 +30,15 @@ void free_grid(int **grid, int n);
 int read_grid_from_file(int **grid, FILE *file, int n);
 
 /**
+ * Check if the sudoku has been completely solved.
+ *
+ * @param grid The sudoku grid
+ * @param n The size of the sudoku
+ * @return int - 1 if solved, else 0
+ */
+int check_solved(int **grid, int n);
+
+/**
  * Displays a Sudoku grid to standard output.
  *
  * @param grid The grid to display

@@ -16,6 +16,7 @@ int main(int argc, char **argv)
 	int sqrt_n;
 	int read_status;
 	int counter;
+	int tot_solved;
 	int **grid;
 	FILE *file;
 	clock_t start_time;
@@ -57,6 +58,7 @@ int main(int argc, char **argv)
 	start_time = clock();
 
 	counter = 0;
+	tot_solved = 0;
 	while (1) {
 		/* Allocate memory for the Sudoku grid */
 		grid = create_grid(n);
@@ -97,6 +99,9 @@ int main(int argc, char **argv)
 
 		printf("\n\n--------------------\n\n");
 
+		if (check_solved(grid, n))
+			++tot_solved;
+
 		/* Free the grid */
 		free_grid(grid, n);
 	}
@@ -106,6 +111,8 @@ int main(int argc, char **argv)
 	computation_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 	printf("\nTotal computation completed in %.6f seconds.\n",
 	       computation_time);
+
+	printf("\nSudokus completely solved: %d\n\n", tot_solved);
 
 	/* Free allocated resources */
 	fclose(file);

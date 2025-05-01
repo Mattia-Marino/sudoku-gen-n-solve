@@ -52,6 +52,18 @@ int read_grid_from_file(int **grid, FILE *file, int n)
 	return 0;
 }
 
+int check_solved(int **grid, int n)
+{
+	int i, j;
+
+	for (i = 0; i < n; ++i)
+		for (j = 0; j < n; ++j)
+			if (grid[i][j] == 0)
+				return 0;
+
+	return 1;
+}
+
 void display_sudoku(int **grid, int n)
 {
 	int i, j; /* Loop variables */
