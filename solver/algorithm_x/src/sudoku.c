@@ -7,7 +7,6 @@
 #include <string.h>
 #include <time.h>
 
-/* #include "../include/solver.h" */
 #include "../include/sudoku.h"
 
 /* Function for initializing the Sudoku struct */

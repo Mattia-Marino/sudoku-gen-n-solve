@@ -5,9 +5,11 @@ GENERATOR_DIR := generator
 GENERATOR_EXECUTABLE := sudoku_generator
 ROOT_GEN_EXECUTABLE := $(GENERATOR_EXECUTABLE)
 
-SOLVER_DIR := solver
-SOLVER_EXECUTABLE := serial_sudoku_solver
-ROOT_SOL_EXECUTABLE := $(SOLVER_EXECUTABLE)
+SOLVER_DIR := solver/algorithm_x
+SERIAL_SOLVER_EXECUTABLE := serial_sudoku_solver
+PARALLEL_SOLVER_EXECUTABLE := parallel_sudoku_solver
+ROOT_SERIAL_SOL_EXECUTABLE := $(SERIAL_SOLVER_EXECUTABLE)
+ROOT_PARALLEL_SOL_EXECUTABLE := $(PARALLEL_SOLVER_EXECUTABLE)
 
 # Define phony targets
 .PHONY: all generate solve clean debug test help
@@ -66,10 +68,11 @@ solve:
 	$(MAKE) -C $(SOLVER_DIR) || exit 1
 
 	@echo ""
-	@echo "Moving $(SOLVER_DIR)/$(SOLVER_EXECUTABLE) to $(CURDIR)"
+	@echo "Moving solver executables to $(CURDIR)"
 	@echo ""
 
-	mv $(SOLVER_DIR)/$(SOLVER_EXECUTABLE) "$(CURDIR)/"
+	mv $(SOLVER_DIR)/$(SERIAL_SOLVER_EXECUTABLE) "$(CURDIR)/"
+	mv $(SOLVER_DIR)/$(PARALLEL_SOLVER_EXECUTABLE) "$(CURDIR)/"
 
 	@echo ""
 	@echo "=============================================="
@@ -102,10 +105,11 @@ debug:
 	$(MAKE) -C $(SOLVER_DIR) DEBUG=1 || exit 1
 
 	@echo ""
-	@echo "Moving $(SOLVER_DIR)/$(SOLVER_EXECUTABLE) to $(CURDIR)"
+	@echo "Moving solver executables to $(CURDIR)"
 	@echo ""
 
-	mv $(SOLVER_DIR)/$(SOLVER_EXECUTABLE) "$(CURDIR)/"
+	mv $(SOLVER_DIR)/$(SERIAL_SOLVER_EXECUTABLE) "$(CURDIR)/"
+	mv $(SOLVER_DIR)/$(PARALLEL_SOLVER_EXECUTABLE) "$(CURDIR)/"
 
 	@echo ""
 	@echo "=============================================="
@@ -129,7 +133,7 @@ clean:
 
 	$(MAKE) -C $(GENERATOR_DIR) clean
 	$(MAKE) -C $(SOLVER_DIR) clean
-	rm -f $(ROOT_GEN_EXECUTABLE) $(ROOT_SOL_EXECUTABLE)
+	rm -f $(ROOT_GEN_EXECUTABLE) $(ROOT_SERIAL_SOL_EXECUTABLE) $(ROOT_PARALLEL_SOL_EXECUTABLE)
 
 	@echo ""
 	@echo "=============================================="
