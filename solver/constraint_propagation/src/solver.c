@@ -611,7 +611,7 @@ int naked_candidates_boxes(struct node ***extended_grid, int n,
 						given_row = i;
 						given_col = j;
 						/* If needed for the tuple, search for other candidates on the box */
-						for (k = row_start; k < row_start + sqrt_n; ++k) {
+						for (k = row_start; k < row_start + sqrt_n && remaining_nodes != 0; ++k) {
 							for (m = col_start; m < col_start + sqrt_n; ++m) {
 								/* Condition to operate only on values after */
 								if (k > given_row || (k == given_row && m > given_col)) {
