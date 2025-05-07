@@ -4,6 +4,7 @@
 
 #include "../include/debug.h"
 #include "../include/linked_list.h"
+#include "../include/common.h"
 #include "../include/solver.h"
 #include "../include/sudoku_utils.h"
 

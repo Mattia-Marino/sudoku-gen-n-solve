@@ -1,9 +1,9 @@
 #ifndef SOLVER_H
 #define SOLVER_H
-struct coordinates {
-	int row;
-	int column;
-};
+
+#include "../include/common.h"
+#include "../include/linked_list.h"
+
 
 int sudoku_solver(int **grid, int n);
 

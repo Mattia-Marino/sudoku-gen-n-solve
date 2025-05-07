@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include "linked_list.h"
 #include "solver.h"
+#include "solver_parallel.h"
 #include "sudoku_utils.h"
 
 /* DPRINTF: Prints debug messages */
@@ -24,6 +25,9 @@
 /* DPRINT_SUDOKU: Prints the sudoku grid */
 #define DPRINT_SUDOKU(...) display_sudoku(__VA_ARGS__)
 
+/* Parallel debug macros */
+#define DPRINT_EXTENDED_GRID_PARALLEL(...) print_extended_grid_parallel(__VA_ARGS__)
+
 #else
 
 /* Define macros as empty statements when DEBUG is not defined */
@@ -31,6 +35,9 @@
 #define DPRINT_LIST(...) do {} while (0)
 #define DPRINT_EXTENDED_GRID(...) do {} while (0)
 #define DPRINT_SUDOKU(...) do {} while (0)
+
+/* Parallel macros as empty statements */
+#define DPRINT_EXTENDED_GRID_PARALLEL(...) do {} while (0)
 
 #endif
 
