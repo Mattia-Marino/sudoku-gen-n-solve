@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../include/debug.h"
-#include "../include/linked_list.h"
-#include "../include/solver.h"
-#include "../include/sudoku_utils.h"
+#include "../../include/debug.h"
+#include "../../include/linked_list.h"
+#include "../../include/solver.h"
+#include "../../include/sudoku_utils.h"
 
 int sudoku_solver(int **grid, int n)
 {

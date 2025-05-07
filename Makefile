@@ -5,7 +5,7 @@ GENERATOR_DIR := generator
 GENERATOR_EXECUTABLE := sudoku_generator
 ROOT_GEN_EXECUTABLE := $(GENERATOR_EXECUTABLE)
 
-SOLVER_DIR := solver/algorithm_x
+SOLVER_DIR := solver/constraint_propagation
 SERIAL_SOLVER_EXECUTABLE := serial_sudoku_solver
 PARALLEL_SOLVER_EXECUTABLE := parallel_sudoku_solver
 ROOT_SERIAL_SOL_EXECUTABLE := $(SERIAL_SOLVER_EXECUTABLE)

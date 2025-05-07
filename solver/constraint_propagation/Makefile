@@ -24,13 +24,13 @@ PARALLEL_DIR := parallel
 SERIAL_OBJS := $(BUILD_DIR)/$(SERIAL_DIR)/main.o \
     $(BUILD_DIR)/sudoku_utils.o \
     $(BUILD_DIR)/linked_list.o \
-    $(BUILD_DIR)/solver.o
+    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o
 
 # Parallel objects
 PARALLEL_OBJS := $(BUILD_DIR)/$(PARALLEL_DIR)/main.o \
     $(BUILD_DIR)/sudoku_utils.o \
-    $(BUILD_DIR)/solver_comm.o \
-    $(BUILD_DIR)/$(PARALLEL_DIR)/solver_parallel.o
+    $(BUILD_DIR)/linked_list.o \
+    $(BUILD_DIR)/$(PARALLEL_DIR)/solver.o
 
 # Handle DEBUG flag from parent Makefile
 ifdef DEBUG
@@ -40,14 +40,14 @@ else
     CFLAGS += -g
 endif
 
-all: serial
+all: serial parallel
 
 serial: $(SERIAL_OUTPUT)
 parallel: $(PARALLEL_OUTPUT)
 
 # Build configurations
 debug: CFLAGS += -g -DDEBUG
-debug: clean serial
+debug: clean serial parallel
 
 release: CFLAGS += -O3 -DNDEBUG
 release: clean serial parallel
