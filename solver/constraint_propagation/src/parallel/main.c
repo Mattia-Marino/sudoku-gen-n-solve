@@ -60,72 +60,98 @@ int main(int argc, char **argv)
 	/* Parse the filename from command line */
 	filename = argv[2];
 
-	/* The Master process opens the file */
+	/* Open the file */
+	file = fopen(filename, "r");
+	if (file == NULL) {
+		fprintf(stderr, "Error: Unable to open file %s\n", filename);
+		MPI_Finalize();
+		return 1;
+	}
 
 	start_time = MPI_Wtime();
 	tot_solved = 0;
 	while(1){
-		if(myrank == 0) {
-			/* Open the file */
-			file = fopen(filename, "r");
-			if (file == NULL) {
-				fprintf(stderr, "Error: Unable to open file %s\n", filename);
-				MPI_Finalize();
-				return 1;
-			}
-	
-			/* Allocate grid*/
-			grid = create_grid(n);
-			if (grid == NULL) {
-				fprintf(stderr, "Error: Failed to allocate memory for grid\n");
-				fclose(file);
-				MPI_Finalize();
-				return 1;
-			}
-	
-			/* Read the grid from the file*/
-			read_status = read_grid_from_file(grid, file, n);
-			if (read_status != 0) {
-				fprintf(stderr, "Error: Failed to read grid from file\n");
-				fclose(file);
+		/* Allocate grid*/
+		grid = create_grid(n);
+		if (grid == NULL) {
+			fprintf(stderr, "Error: Failed to allocate memory for grid\n");
+			fclose(file);
+			MPI_Finalize();
+			return 1;
+		}
+
+		/* Read the grid from the file*/
+		read_status = read_grid_from_file(grid, file, n);
+		if (read_status != 0) {
+			/* If read failed because we reached EOF */
+			if (feof(file)) {
+				DPRINTF("Reached EOF\n");
 				free_grid(grid, n);
-				MPI_Finalize();
-				return 1;
-			}
-		}else{
-			/* Other processes do not need to open the file or read the grid */
-			grid = create_grid(n);
-			if (grid == NULL) {
-				fprintf(stderr, "Error: Failed to allocate memory for grid\n");
-				MPI_Finalize();
+				break;
+			} else {
+				fprintf(stderr, "Error: Failed to read grid from file\n");
+				free_grid(grid, n);
+				fclose(file);
 				return 1;
 			}
 		}
 	
+		/*
 		MPI_Bcast(&grid[0][0], n * n, MPI_INT, 0, MPI_COMM_WORLD);
 		MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
+		*/
+
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		if (myrank == 0) {
+			/* Display the given Sudoku grid */
+			DPRINTF("\nI am process %d. Given Sudoku grid:\n", myrank);
+			DPRINT_SUDOKU(grid, n);
+			DPRINTF("\n\n---------------------\n\n");
+		}
+
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		if (myrank == 1) {
+			/* Display the given Sudoku grid */
+			DPRINTF("\nI am process %d. Given Sudoku grid:\n", myrank);
+			DPRINT_SUDOKU(grid, n);
+			DPRINTF("\n\n---------------------\n\n");
+		}
+
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		sudoku_solver_parallel(grid, n, myrank, size);
 
+		DPRINTF("Process %d waiting at barrier...\n\n", myrank);
+		fflush(stdout);
+
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		DPRINTF("We are all past the barrier - %d\n", myrank);
+		fflush(stdout);
+
 		/* Master process prints the computation time */
 		if (myrank == 0) {
-			/* Display the given Sudoku grid */
-			DPRINTF("\nGiven Sudoku grid:\n");
-			DPRINT_SUDOKU(grid, n);
-			DPRINTF("\n\n\n");
-	
-			/* Solve the sudoku */
-			DPRINTF("Solving the sudoku...\n\n");
 			DPRINTF("The proposed grid:\n");
 			DPRINT_SUDOKU(grid, n);
 	
 			DPRINTF("\n\n--------------------\n\n");
+
+			if (check_solved(grid, n))
+				++tot_solved;
+
 			free_grid(grid, n);
-		    } else {
+		} else {
 			/* Free the grid on slave processes */
 			free_grid(grid, n);
-		    }
+		}
+
+		MPI_Barrier(MPI_COMM_WORLD);
 	}
+
+	DPRINTF("Process %d - Out of the loop\n", myrank);
+
 	end_time = MPI_Wtime();
 	computation_time = end_time - start_time;
 	if (myrank == 0) {
@@ -133,7 +159,11 @@ int main(int argc, char **argv)
 		fprintf(stdout, "Total solved: %d\n", tot_solved);
 	}	
 
-	MPI_Finalize();
+	DPRINTF("Closing the file - %d\n", myrank);
 	fclose(file);
+
+	DPRINTF("I have finished everything - %d\n", myrank);
+
+	MPI_Finalize();
 	return 0;
 }

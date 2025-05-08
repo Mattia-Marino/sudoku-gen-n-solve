@@ -136,6 +136,7 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 		       100);
 
 	/* Fill the original grid with single values */
+	DPRINTF("Filling the original grid...\n");
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
 			struct node *temp = extended_grid[i][j];
@@ -146,10 +147,13 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 	}
 
 	/* Free the extended grid */
+	DPRINTF("Freeing all resources\n");
 	free_extended_grid_parallel(extended_grid, n);
 	free_propagation_matrix_parallel(already_propagated_rows, n);
 	free_propagation_matrix_parallel(already_propagated_columns, n);
 	free_propagation_matrix_parallel(already_propagated_boxes, n);
+
+	DPRINTF("All done. Process %d going back to main\n", rank);
 
 	return 0;
 }
