@@ -40,7 +40,7 @@ else
     CFLAGS += -g
 endif
 
-all: serial parallel
+all: clean serial parallel
 
 serial: $(SERIAL_OUTPUT)
 parallel: $(PARALLEL_OUTPUT)

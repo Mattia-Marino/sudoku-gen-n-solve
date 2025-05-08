@@ -30,9 +30,12 @@ int main(int argc, char **argv)
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	/* Check if the correct number of arguments is passed */
+	/* Check if the correct number of arguments is passed by all processes */
 	if (argc != 3) {
-		fprintf(stderr, "Usage: %s <size> <filename>\n", argv[0]);
+		if (rank == 0) {
+			fprintf(stderr, "Usage: %s <size> <filename>\n", argv[0]);
+		}
+		MPI_Finalize();
 		return 1;
 	}
 

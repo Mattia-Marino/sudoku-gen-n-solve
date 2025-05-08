@@ -15,7 +15,7 @@ ROOT_PARALLEL_SOL_EXECUTABLE := $(PARALLEL_SOLVER_EXECUTABLE)
 .PHONY: all generate solve clean debug test help
 
 # Default target
-all: generate solve
+all: clean generate solve
 
 # Help target - must be first for default help behavior
 help:
@@ -81,7 +81,7 @@ solve:
 	@echo ""
 
 # Debug build of all components
-debug:
+debug: clean
 	@echo ""
 	@echo "=============================================="
 	@echo "BUILDING GENERATOR (DEBUG MODE)"
