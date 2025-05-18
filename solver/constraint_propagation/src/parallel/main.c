@@ -8,7 +8,7 @@
 #include <time.h>
 
 #include "../../include/debug.h"
-#include "../../include/solver.h"
+#include "../../include/solver_parallel.h"
 #include "../../include/sudoku_utils.h"
 
 int main(int argc, char **argv)
@@ -32,9 +32,9 @@ int main(int argc, char **argv)
 
 	/* Check if the correct number of arguments is passed by all processes */
 	if (argc != 3) {
-		if (rank == 0) {
+		if (rank == 0)
 			fprintf(stderr, "Usage: %s <size> <filename>\n", argv[0]);
-		}
+
 		MPI_Finalize();
 		return 1;
 	}
@@ -44,13 +44,19 @@ int main(int argc, char **argv)
 
 	/* Checks on puzzle size */
 	if (n < 1) {
-		fprintf(stderr, "Error: Puzzle size can't be 0 or a negative number\n");
+		if (rank == 0)
+			fprintf(stderr, "Error: Puzzle size can't be 0 or a negative number\n");
+		
+		MPI_Finalize();
 		return 1;
 	}
 
 	sqrt_n = (int)sqrt(n);
 	if (sqrt_n * sqrt_n != n) {
-		fprintf(stderr, "Error: Size %d must be a perfect square (4, 9, 16, ...)\n", n);
+		if (rank == 0)
+			fprintf(stderr, "Error: Size %d must be a perfect square (4, 9, 16, ...)\n", n);
+		
+		MPI_Finalize();
 		return 1;
 	}
 
@@ -60,7 +66,10 @@ int main(int argc, char **argv)
 	/* Open the file */
 	file = fopen(filename, "r");
 	if (file == NULL) {
-		fprintf(stderr, "Error: Unable to open file %s\n", filename);
+		if (rank == 0)
+			fprintf(stderr, "Error: Unable to open file %s\n", filename);
+
+		MPI_Finalize();
 		return 1;
 	}
 
@@ -83,28 +92,44 @@ int main(int argc, char **argv)
 		if (read_status != 0) {
 			/* If read failed because we reached EOF */
 			if (feof(file)) {
-				DPRINTF("Reached EOF\n");
+				DPRINTF("Process %d - Reached EOF\n", rank);
 				break;
 			} else {
-				fprintf(stderr, "Error: Failed to read grid from file\n");
+				fprintf(stderr, "Process %d - Error: Failed to read grid from file\n", rank);
+	
 				free_grid(grid, n);
 				fclose(file);
+				
+				MPI_Finalize();
 				return 1;
 			}
 		}
 
-		/* Display the given Sudoku grid */
-		DPRINTF("\nGiven Sudoku grid:\n");
-		DPRINT_SUDOKU(grid, n);
-		DPRINTF("\n\n\n");
+		/* Rank 0 - Display the given Sudoku grid */
+		if (rank == 0) {
+			DPRINTF("\nGiven Sudoku grid:\n");
+			DPRINT_SUDOKU(grid, n);
+			DPRINTF("\n\n\n");
+		}
 
 		/* Solve the sudoku */
-		DPRINTF("Solving the sudoku...\n\n");
-		sudoku_solver(grid, n);
-		DPRINTF("The proposed grid:\n");
-		DPRINT_SUDOKU(grid, n);
+		DPRINTF("Process %d - Solving the sudoku...\n\n", rank);
+		parallel_sudoku_solver(grid, n, rank, size);
 
-		DPRINTF("\n\n--------------------\n\n");
+		/* TODO: delete in prod to save time */
+		fflush(stdout);
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		if (rank == 0) {
+			DPRINTF("The proposed grid:\n");
+			DPRINT_SUDOKU(grid, n);
+
+			DPRINTF("\n\n--------------------\n\n");
+		}
+
+		/* TODO: delete in prod to save time */
+		fflush(stdout);
+		MPI_Barrier(MPI_COMM_WORLD);
 
 		if (check_solved(grid, n))
 			++tot_solved;
@@ -116,10 +141,16 @@ int main(int argc, char **argv)
 	/* End timing */
 	end_time = clock();
 	computation_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
-	printf("\nTotal computation completed in %.6f seconds.\n",
-	       computation_time);
 
-	printf("Sudokus completely solved: %d\n\n", tot_solved);
+	fflush(stdout);
+	MPI_Barrier(MPI_COMM_WORLD);
+
+	if (rank == 0) {
+		printf("\nTotal computation completed in %.6f seconds.\n",
+		computation_time);
+
+		printf("Sudokus completely solved: %d\n\n", tot_solved);
+	}
 
 	/* Free allocated resources */
 	fclose(file);

@@ -1,13 +1,15 @@
 #include <math.h>
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 	#include "../../include/debug.h"
 	#include "../../include/linked_list.h"
 	#include "../../include/solver.h"
+	#include "../../include/solver_parallel.h"
 	#include "../../include/sudoku_utils.h"
 
-int sudoku_solver(int **grid, int n)
+int parallel_sudoku_solver(int **grid, int n, int rank, int size)
 {
 	int i, j; /* Loop variables */
 	int is_changed; /* Flag to check if any changes are made */
@@ -20,6 +22,15 @@ int sudoku_solver(int **grid, int n)
 	int ***already_propagated_columns;
 	int ***already_propagated_boxes;
 	int **selected_propagated;
+
+	int sqrt_n;
+	int starting_row, ending_row;
+
+	sqrt_n = (int)sqrt(n);
+	starting_row = (rank % sqrt_n) * sqrt_n;
+	ending_row = starting_row + sqrt_n;
+
+	DPRINTF("I am process %d. Starting row: %d. Ending row: %d\n\n", rank, starting_row, ending_row - 1);
 
 	/* TODO: Add checks for errors */
 	max_depth = (int)floor((double)n / 2);
@@ -69,13 +80,15 @@ int sudoku_solver(int **grid, int n)
 		/* Use the technique of naked candidates */
 		for (depth = 1; depth <= max_depth; ++depth) {
 			selected_propagated = already_propagated_rows[depth - 1];
-			is_changed += naked_candidates_rows(extended_grid,
-				n, selected_propagated, depth);
+			is_changed += parallel_naked_candidates_rows(extended_grid,
+				n, selected_propagated, depth,
+				starting_row, ending_row);
 			
 			DPRINTF("\n\nPropagation at depth (row): %d\n", depth);
 			DPRINT_EXTENDED_GRID(extended_grid, n);
 			DPRINTF("\n\n\n");
 
+			/*
 			selected_propagated = already_propagated_columns[depth - 1];
 			is_changed += naked_candidates_columns(extended_grid,
 				n, selected_propagated, depth);
@@ -91,16 +104,20 @@ int sudoku_solver(int **grid, int n)
 			DPRINTF("\n\nPropagation at depth (box): %d\n", depth);
 			DPRINT_EXTENDED_GRID(extended_grid, n);
 			DPRINTF("\n\n\n");
+			*/
 		}
 
 		/* Use technique of hidden singles */
-		DPRINTF("\n\nHidden singles...\n");
-		is_changed += hidden_singles(extended_grid, n);
+		/*DPRINTF("\n\nHidden singles...\n");
+		is_changed += hidden_singles(extended_grid, n);*/
 
 		/* Print the updated extended grid */
-		DPRINTF("\nUpdated extended grid:\n");
+		/*DPRINTF("\nUpdated extended grid:\n");
 		DPRINT_EXTENDED_GRID(extended_grid, n);
-		DPRINTF("\n\n\n");
+		DPRINTF("\n\n\n");*/
+
+		MPI_Barrier(MPI_COMM_WORLD);
+		communication(extended_grid, n, rank, size);
 	} while (is_changed);
 
 	/* Count numbers left for progress */
@@ -139,70 +156,10 @@ int sudoku_solver(int **grid, int n)
 	return 0;
 }
 
-struct node ***extend_grid(int **grid, int n)
-{
-	struct node ***extended_grid; /* Extended grid */
-	int i, j, k; /* Loop variables */
 
-	extended_grid = (struct node ***)malloc(n * sizeof(struct node **));
-	if (extended_grid == NULL) {
-		fprintf(stderr,
-			"Error: Unable to allocate memory for extended grid\n");
-		return NULL;
-	}
-
-	for (i = 0; i < n; i++) {
-		extended_grid[i] =
-			(struct node **)malloc(n * sizeof(struct node *));
-		if (extended_grid[i] == NULL) {
-			fprintf(stderr,
-				"Error: Unable to allocate memory for extended grid row\n");
-			for (j = 0; j < i; j++) {
-				free(extended_grid[j]);
-			}
-			free(extended_grid);
-			return NULL;
-		}
-
-		for (j = 0; j < n; j++) {
-			extended_grid[i][j] = NULL;
-			if (grid[i][j] != 0)
-				extended_grid[i][j] =
-					append(extended_grid[i][j], grid[i][j]);
-			else
-				for (k = 1; k <= n; k++)
-					extended_grid[i][j] =
-						append(extended_grid[i][j], k);
-
-			if (extended_grid[i][j] == NULL) {
-				fprintf(stderr,
-					"Error: Unable to create or append node in extended grid\n");
-				free_extended_grid(extended_grid, n);
-
-				return NULL;
-			}
-
-			/* Debugging output */
-			DPRINTF("Extended grid at [%d][%d]: ", i + 1, j + 1);
-			DPRINT_LIST(extended_grid[i][j]);
-			DPRINTF("\n");
-		}
-	}
-
-	return extended_grid;
-}
-
-void initialize_propagation_matrix(int **matrix, int n)
-{
-	int i, j;
-
-	for (i = 0; i < n; ++i)
-		for (j = 0; j < n; ++j)
-			matrix[i][j] = 0;
-}
-
-int naked_candidates_rows(struct node ***extended_grid, int n,
-			  int **already_propagated, int depth)
+int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
+			  int **already_propagated, int depth,
+			  int start_row, int end_row)
 {
 	int i, j; /* Loop variables to go through the matrix */
 	int k; /* Temp loop variable to continue to search for matches */
@@ -228,7 +185,7 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 	changed = 0; /* Set changed to 0, since nothing changed yet */
 
 	/* Explore extended grid row-wise */
-	for (i = 0; i < n; ++i) {
+	for (i = start_row; i < end_row; ++i) {
 		for (j = 0; j < n; ++j) {
 			remaining_nodes = depth;
 			candidates = NULL; /* Reset candidates list for each potential starting node */
@@ -358,597 +315,175 @@ int naked_candidates_rows(struct node ***extended_grid, int n,
 	return changed;
 }
 
-int naked_candidates_columns(struct node ***extended_grid, int n,
-	int **already_propagated, int depth)
-{
-	int i, j; /* Loop variables to go through the matrix */
-	int k; /* Temp loop variable to continue to search for matches */
-	int l; /* Loop variable to save the coordinates */
-	int remaining_nodes;
-	int changed;
-	int n_difference;
-	struct node *candidates;
-	struct node *temp;
-	struct node *temp2;
-	struct coordinates *coord;
-
-	DPRINTF("\nElimination of naked candidates (column) at depth %d\n", depth);
-
-	/* Set coordinates array to lenght depth */
-	coord = (struct coordinates *)malloc(depth *
-					     sizeof(struct coordinates));
-	if (coord == NULL) {
-		fprintf(stderr, "Memory allocation failed\n");
-		return -1; /* Indicate error */
-	}
-
-	changed = 0; /* Set changed to 0, since nothing changed yet */
-
-	/* Explore extended grid column-wise */
-	for (j = 0; j < n; ++j) {
-		for (i = 0; i < n; ++i) {
-			remaining_nodes = depth;
-			candidates = NULL; /* Reset candidates list for each potential starting node */
-			l = 0; /* Reset coordinate index for each potential starting node 'i' */
-
-			temp = extended_grid[i][j];
-			DPRINTF("\tAt cell [%d][%d]: ", i + 1, j + 1);
-			DPRINT_LIST(temp);
-			DPRINTF("\n");
-
-			if (temp == NULL) {
-				DPRINTF("\t\t - No values in this cell\n");
-				continue;
-			}
-
-			/* Check the right depth */
-			if (size_list(temp) > depth) {
-				DPRINTF("\t\t - More than %d values in this cell\n",
-				       depth);
-				continue;
-			}
-
-			/* Exclude naked singles for superior tuples */
-			if (size_list(temp) == 1 && depth > 1)
-				continue;
-
-			/* If we are in this section of the code it means we found something with a good depth */
-			DPRINTF("\t\tRight number of values\n");
-
-			/* Check if already propagated */
-			if (!already_propagated[i][j]) {
-				/* Append values in candidate list */
-				temp2 = temp;
-				do {
-					candidates = append(candidates, temp2->data);
-					if (candidates == NULL && temp2->data != 0) {
-						fprintf(stderr, "Failed to append node in elimination\n");
-						free(coord);
-						return -1;
-					}
-					temp2 = temp2->next;
-				} while (temp2 != NULL);
-
-				/* Save node coordinates */
-				coord[l].row = i;
-				coord[l].column = j;
-				l++;
-
-				/* Subtract from counter to signal the possible candidate */
-				DPRINTF("Remaining nodes: %d", remaining_nodes);
-				--remaining_nodes;
-				DPRINTF("...%d\n", remaining_nodes);
-
-				/* If needed for the tuple, search for other candidates on the column */
-				for (k = i + 1; k < n && remaining_nodes != 0; ++k) {
-					/* Exclude adding singles to the tuple */
-					if (size_list(extended_grid[k][j]) <= 1)
-						continue;
-	
-					temp = extended_grid[k][j];
-					n_difference = count_different_values(candidates, extended_grid[k][j]);
-	
-					DPRINTF("\t\t\tCell [%d][%d] - Difference: %d\n", k + 1, j + 1, n_difference);
-	
-					if ((size_list(candidates) + n_difference) <= depth) {
-						/* Add new values to candidates */
-						DPRINTF("\t\t\tAdding new candidates to list...");
-						candidates = add_new_candidates(candidates, extended_grid[k][j]);
-						DPRINT_LIST(candidates);
-						DPRINTF("\n\n");
-	
-						coord[l].row = k;
-						coord[l].column = j;
-						l++;
-	
-						--remaining_nodes;
-						if (remaining_nodes == 0)
-							break;
-					}
-				}
-
-				if (remaining_nodes == 0) {
-					/* Found a complete naked tuple of size 'depth' */
-					DPRINTF("\nFound naked tuple of size %d at cells: ", depth);
-					for (l = 0; l < depth; ++l) {
-						DPRINTF("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
-					}
-					DPRINTF("\nValues to propagate: ");
-					DPRINT_LIST(candidates);
-					DPRINTF("\n");
-	
-					/* Propagate each value in the candidates list */
-					temp2 = candidates;
-					while (temp2 != NULL) {
-						propagate_column(
-							extended_grid, n, coord, depth,
-							temp2->data); /* Pass 'depth' as n_coordinates */
-						temp2 = temp2->next;
-					}
-	
-					/* Mark involved cells as propagated */
-					for (l = 0; l < depth; ++l) {
-						already_propagated[coord[l].row][coord[l].column] = 1;
-					}
-					changed = 1; /* Signal that at least a change occurred */
-	
-					DPRINTF("\nPropagation complete.\n\n");
-				} else {
-					/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
-					DPRINTF("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
-					       i + 1, j + 1);
-				}
-
-				/* Free the candidates list for the next iteration */
-				free_list(candidates);
-			} else {
-				DPRINTF("\t - Cell [%d][%d] already propagated\n",
-				       i + 1, j + 1);
-				free_list(candidates); /* Free candidates if we skip due to already propagated */
-			}
-		}
-	}
-
-	free(coord);
-	DPRINTF("\n");
-
-	return changed;
-}
-
-int naked_candidates_boxes(struct node ***extended_grid, int n,
-	int **already_propagated, int depth)
-{
-	int i, j; /* Loop variables to go through the matrix */
-	int k, m; /* Temp loop variable to continue to search for matches */
-	int l; /* Loop variable to save the coordinates */
-	int remaining_nodes;
-	int changed;
-	int n_difference;
-	struct node *candidates;
-	struct node *temp;
-	struct node *temp2;
-	struct coordinates *coord;
-
-	int sqrt_n;
-	int box_row, box_col;
-	int row_start, col_start;
-	int given_row, given_col;
-
-	DPRINTF("\nElimination of naked candidates (box) at depth %d\n", depth);
-
-	/* Set coordinates array to lenght depth */
-	coord = (struct coordinates *)malloc(depth *
-					     sizeof(struct coordinates));
-	if (coord == NULL) {
-		fprintf(stderr, "Memory allocation failed\n");
-		return -1; /* Indicate error */
-	}
-
-	sqrt_n = (int)sqrt(n);
-	changed = 0; /* Set changed to 0, since nothing changed yet */
-
-	for (box_row = 0; box_row < sqrt_n; ++box_row) {
-		for (box_col = 0; box_col < sqrt_n; ++box_col) {
-			/* Calculate starting row and column for the current box */
-			row_start = box_row * sqrt_n;
-			col_start = box_col * sqrt_n;
-
-			/* Iterate through the cells within the box */
-			for (i = row_start; i < row_start + sqrt_n; ++i) {
-                		for (j = col_start; j < col_start + sqrt_n; ++j) {
-					remaining_nodes = depth;
-					candidates = NULL; /* Reset candidates list for each potential starting node */
-					l = 0; /* Reset coordinate index for each potential starting node 'i' */
-
-					temp = extended_grid[i][j];
-					DPRINTF("\tAt cell [%d][%d]: ", i + 1, j + 1);
-					DPRINT_LIST(temp);
-					DPRINTF("\n");
-
-					if (temp == NULL) {
-						DPRINTF("\t\t - No values in this cell\n");
-						continue;
-					}
-
-					/* Check the right depth */
-					if (size_list(temp) > depth) {
-						DPRINTF("\t\t - More than %d values in this cell\n",
-						depth);
-						continue;
-					}
-
-					/* Exclude naked singles for superior tuples */
-					if (size_list(temp) == 1 && depth > 1)
-						continue;
-
-					/* If we are in this section of the code it means we found something with a good depth */
-					DPRINTF("\t\tRight number of values\n");
-
-					/* Check if already propagated */
-					if (!already_propagated[i][j]) {
-						/* Append values in candidate list */
-						temp2 = temp;
-						do {
-							candidates = append(candidates, temp2->data);
-							if (candidates == NULL && temp2->data != 0) {
-								fprintf(stderr, "Failed to append node in elimination\n");
-								free(coord);
-								return -1;
-							}
-							temp2 = temp2->next;
-						} while (temp2 != NULL);
-
-						/* Save node coordinates */
-						coord[l].row = i;
-						coord[l].column = j;
-						l++;
-
-						/* Subtract from counter to signal the possible candidate */
-						DPRINTF("Remaining nodes: %d", remaining_nodes);
-						--remaining_nodes;
-						DPRINTF("...%d\n", remaining_nodes);
-
-						given_row = i;
-						given_col = j;
-						/* If needed for the tuple, search for other candidates on the box */
-						for (k = row_start; k < row_start + sqrt_n && remaining_nodes != 0; ++k) {
-							for (m = col_start; m < col_start + sqrt_n; ++m) {
-								/* Condition to operate only on values after */
-								if (k > given_row || (k == given_row && m > given_col)) {
-									/* Exclude adding singles to the tuple */
-									if (size_list(extended_grid[k][m]) <= 1)
-										continue;
-				
-									temp = extended_grid[k][m];
-									n_difference = count_different_values(candidates, extended_grid[k][m]);
-					
-									DPRINTF("\t\t\tCell [%d][%d] - Difference: %d\n", k + 1, m + 1, n_difference);
-					
-									if ((size_list(candidates) + n_difference) <= depth) {
-										/* Add new values to candidates */
-										DPRINTF("\t\t\tAdding new candidates to list...");
-										candidates = add_new_candidates(candidates, extended_grid[k][m]);
-										DPRINT_LIST(candidates);
-										DPRINTF("\n\n");
-					
-										coord[l].row = k;
-										coord[l].column = m;
-										l++;
-					
-										--remaining_nodes;
-										if (remaining_nodes == 0)
-											break;
-									}
-								}
-
-							}
-
-							if (remaining_nodes == 0)
-								break;
-						}
-
-						if (remaining_nodes == 0) {
-							/* Found a complete naked tuple of size 'depth' */
-							DPRINTF("\nFound naked tuple of size %d at cells: ", depth);
-							for (l = 0; l < depth; ++l) {
-								DPRINTF("[%d][%d] ", coord[l].row + 1, coord[l].column + 1);
-							}
-							DPRINTF("\nValues to propagate: ");
-							DPRINT_LIST(candidates);
-							DPRINTF("\n");
-			
-							/* Propagate each value in the candidates list */
-							temp2 = candidates;
-							while (temp2 != NULL) {
-								propagate_box(
-									extended_grid, n, coord, depth,
-									temp2->data); /* Pass 'depth' as n_coordinates */
-								temp2 = temp2->next;
-							}
-			
-							/* Mark involved cells as propagated */
-							for (l = 0; l < depth; ++l) {
-								already_propagated[coord[l].row][coord[l].column] = 1;
-							}
-							changed = 1; /* Signal that at least a change occurred */
-			
-							DPRINTF("\nPropagation complete.\n\n");
-						} else {
-							/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
-							DPRINTF("\t\tDid not find enough matching cells for a tuple starting at [%d][%d]\n\n",
-							i + 1, j + 1);
-						}
-
-						/* Free the candidates list for the next iteration */
-						free_list(candidates);
-					} else {
-						DPRINTF("\t - Cell [%d][%d] already propagated\n",
-						i + 1, j + 1);
-						free_list(candidates); /* Free candidates if we skip due to already propagated */
-					}
-				}
-			}
-		}
-	}
-
-	free(coord);
-	DPRINTF("\n");
-
-	return changed;
-}
-
-void propagate_row(struct node ***extended_grid, int n,
-		   struct coordinates *coord, int n_coordinates, int value)
+void communication(struct node ***extended_grid, int n, int rank, int size)
 {
 	int i, j;
-	int row =
-		coord[0].row; /* Propagating only the row, the value will be same for all coords */
-	int skip;
 
-	DPRINTF("\nPropagating value %d on row %d\n", value, row + 1);
+	/* Variables for MPI processing of EACH list in 'row' */
+	int local_list_size;
+	int *local_list_data;
+	struct node *current_node_in_original_list; /* Iterator for the original list row[list_idx] */
+	int *all_sizes;
+	int *displacements;
+	int total_flat_size;
+	int *all_lists_flat_data;
+	struct node *new_filtered_list_head; /* Head of the new filtered list for row[list_idx] */
+	int data_to_check;
+	int present_in_all_others; /* Using int for boolean: 1 for true, 0 for false */
+	int other_rank_idx;
+	int found_in_this_other_list; /* Using int for boolean */
+	int other_list_start_idx;
+	int other_list_current_size;
+	int k; /* Loop counter for iterating through other lists' data */
+
 
 	for (i = 0; i < n; ++i) {
-		skip = 0; /* Flag to check if current cell [row][i] should be skipped */
-		for (j = 0; j < n_coordinates; ++j) {
-			/* Check if the current column index 'i' matches any of the coordinate columns */
-			if (i == coord[j].column) {
-				skip = 1; /* Mark this cell to be skipped */
-				break; /* No need to check further coordinates for this cell */
-			}
-		}
-
-		/* If the cell should not be skipped, proceed with deletion */
-		if (!skip) {
-			extended_grid[row][i] = delete_at_given_value(
-				extended_grid[row][i], value);
-		}
-	}
-}
-
-void propagate_column(struct node ***extended_grid, int n,
-	struct coordinates *coord, int n_coordinates, int value)
-{
-	int i, j;
-	int column =
-		coord[0].column; /* Propagating only the column, the value will be same for all coords */
-	int skip;
-
-	DPRINTF("\nPropagating value %d on column %d\n", value, column + 1);
-
-	for (i = 0; i < n; ++i) {
-		skip = 0; /* Flag to check if current cell [i][column] should be skipped */
-		for (j = 0; j < n_coordinates; ++j) {
-			/* Check if the current row index 'i' matches any of the coordinate rows */
-			if (i == coord[j].row) {
-				skip = 1; /* Mark this cell to be skipped */
-				break; /* No need to check further coordinates for this cell */
-			}
-		}
-
-		/* If the cell should not be skipped, proceed with deletion */
-		if (!skip) {
-			extended_grid[i][column] = delete_at_given_value(
-				extended_grid[i][column], value);
-		}
-	}
-}
-
-void propagate_box(struct node ***extended_grid, int n,
-	struct coordinates *coord, int n_coordinates, int value)
-{
-	int i, j;
-	int k;
-	int sqrt_n;
-	int skip;
-
-	int row_start, col_start;
-
-	sqrt_n = (int)sqrt(n);
-	row_start = (coord[0].row / sqrt_n) * sqrt_n;
-        col_start = (coord[0].column / sqrt_n) * sqrt_n; 
-
-	DPRINTF("\nPropagating value %d in its box\n", value);
-
-	for (i = row_start; i < row_start + sqrt_n; ++i) {
-		for (j = col_start; j < col_start + sqrt_n; ++j) {
-			skip = 0;
-
-			for (k = 0; k < n_coordinates; ++k) {
-				if (i == coord[k].row && j == coord[k].column) {
-					skip = 1;
-					break;
-				}
-			}
-
-			if (!skip) {
-				extended_grid[i][j] = delete_at_given_value(extended_grid[i][j], value);
-			}
-		}
-	}
-}
-
-int hidden_singles(struct node ***extended_grid, int n)
-{
-	int is_changed;
-	int i, j; /* Loop variables */
-	int flag;
-	int value;
-
-	is_changed = 0;
-
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n; j++) {
-			struct node *temp = extended_grid[i][j];
-
-			/* If already a single value, go to next cell */
-			if (temp->next == NULL) {
-				DPRINTF("\tAt [%d][%d] already a single value: %d\n",
-				       i + 1, j + 1, temp->data);
-				continue;
-			}
-
-			/* Traverse every node of the list looking if it's a hidden single */
-			flag = 0;
-			while (temp != NULL) {
-				value = temp->data;
-				DPRINTF("\tAt [%d][%d] - checking value %d\n",
-				       i + 1, j + 1, value);
-
-				flag = check_hidden_single(extended_grid, n, i,
-							   j, value);
-
-				if (!flag) {
-					DPRINTF("\t - Value %d is a hidden single\n",
-					       value);
-					break;
-				} else {
-					DPRINTF("\t - Copy found, value %d is not a hidden single, going to next node\n",
-					       value);
-				}
-
-				temp = temp->next;
-			}
-
-			if (!flag) {
-				struct node *temp2 = extended_grid[i][j];
-				temp2->data = value;
-				temp2 = delete_all_but_head(temp2);
-
-				is_changed = 1;
-			}
-
-			DPRINTF("\n");
-		}
-	}
-
-	return is_changed;
-}
-
-int check_hidden_single(struct node ***extended_grid, int n, int row, int col,
-			int value)
-{
-	int i, j; /* Loop variables */
-	int flag = 0; /* Flag to check if the value is present */
-	int box_row, box_col; /* Row and column of the box */
-	int sqrt_n; /* Square root of n */
-
-	/* Check if the value is present in the same row */
-	for (j = 0; j < n; j++) {
-		if (j != col) {
-			struct node *temp = extended_grid[row][j];
-			while (temp != NULL) {
-				if (temp->data == value) {
-					flag = 1;
-					return flag;
-				}
-				temp = temp->next;
-			}
-		}
-	}
-
-	/* Check if the value is present in the same column */
-	if (!flag) {
-		for (i = 0; i < n; i++) {
-			if (i != row) {
-				struct node *temp = extended_grid[i][col];
-				while (temp != NULL) {
-					if (temp->data == value) {
-						flag = 1;
-						return flag;
-					}
-					temp = temp->next;
-				}
-			}
-		}
-	}
-
-	/* Check if the value is present in the same box */
-	sqrt_n = (int)sqrt(n);
-	box_row = row - (row % sqrt_n);
-	box_col = col - (col % sqrt_n);
-
-	for (i = box_row; i < box_row + sqrt_n; i++) {
-		for (j = box_col; j < box_col + sqrt_n; j++) {
-			struct node *temp = extended_grid[i][j];
-
-			if (i != row && j != col) {
-				while (temp != NULL) {
-					if (temp->data == value) {
-						flag = 1;
-						return flag;
-					}
-					temp = temp->next;
-				}
-			}
-		}
-	}
-
-	return flag;
-}
-
-void print_extended_grid(struct node ***extended_grid, int n)
-{
-	int i, j; /* Loop variables */
-
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n; j++) {
-			printf("At [%d][%d]: ", i + 1, j + 1);
-			print_list(extended_grid[i][j]);
-			printf("\n");
-		}
-		printf("\n");
-	}
-}
-
-void free_extended_grid(struct node ***extended_grid, int n)
-{
-	int i, j; /* Loop variables */
-
-	if (extended_grid != NULL) {
-		for (i = 0; i < n; i++) {
-			for (j = 0; j < n; j++) {
-				struct node *temp = extended_grid[i][j];
-				free_list(temp);
-			}
-
-			free(extended_grid[i]);
-		}
-
-		free(extended_grid);
-	}
-}
-
-void free_propagation_matrix(int ***propagation, int n)
-{
-	int i, j;
-	int sqrt_n;
-
-	sqrt_n = (int)sqrt(n);
-	for (i = 0; i < sqrt_n; ++i) {
 		for (j = 0; j < n; ++j) {
-			free(propagation[i][j]);
+			/* Reset variables for the current list row[list_idx] */
+			local_list_data = NULL;
+			all_sizes = NULL;
+			displacements = NULL;
+			all_lists_flat_data = NULL;
+			new_filtered_list_head = NULL;
+			total_flat_size = 0;
+			current_node_in_original_list = extended_grid[i][j];
+
+			/* 1. Serialize local list (row[list_idx]) into an array */
+			local_list_size = size_list(current_node_in_original_list);
+			if (local_list_size > 0) {
+				local_list_data =
+					(int *)malloc(local_list_size * sizeof(int));
+				if (local_list_data == NULL) {
+					fprintf(stderr,
+						"Process %d: Failed to allocate memory for local_list_data (list [%d][%d])\n",
+						rank, i, j);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+				/* Populate local_list_data from current_node_in_original_list (which is row[list_idx]) */
+				struct node *temp_iter = current_node_in_original_list;
+				for (k = 0; k < local_list_size; k++) {
+					local_list_data[k] = temp_iter->data;
+					temp_iter = temp_iter->next;
+				}
+			}
+
+			/* 2. Gather all list sizes (for current row[list_idx] across processes) */
+			all_sizes = (int *)malloc(size * sizeof(int));
+			if (all_sizes == NULL) {
+				fprintf(stderr,
+					"Process %d: Failed to allocate memory for all_sizes (list [%d][%d])\n",
+					rank, i, j);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+			MPI_Allgather(&local_list_size, 1, MPI_INT, all_sizes, 1,
+				MPI_INT, MPI_COMM_WORLD);
+
+			/* 3. Prepare for Allgatherv: calculate displacements and total size */
+			displacements = (int *)malloc(size * sizeof(int));
+			if (displacements == NULL) {
+				fprintf(stderr,
+					"Process %d: Failed to allocate memory for displacements (list [%d][%d])\n",
+					rank, i, j);
+				MPI_Abort(MPI_COMM_WORLD, 1);
+			}
+
+			total_flat_size = 0;
+			for (k = 0; k < size; k++) {
+				total_flat_size += all_sizes[k];
+			}
+			if (size > 0) {
+				displacements[0] = 0;
+				for (k = 1; k < size; k++) {
+					displacements[k] =
+						displacements[k - 1] + all_sizes[k - 1];
+				}
+			}
+
+			if (total_flat_size > 0) {
+				all_lists_flat_data =
+					(int *)malloc(total_flat_size * sizeof(int));
+				if (all_lists_flat_data == NULL) {
+					fprintf(stderr,
+						"Process %d: Failed to allocate memory for all_lists_flat_data (list [%d][%d])\n",
+						rank, i, j);
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+			}
+
+			/* 4. Gather all list data (for current row[list_idx] across processes) */
+			if (total_flat_size > 0) {
+				MPI_Allgatherv(local_list_data ? local_list_data :
+								MPI_BOTTOM,
+					local_list_size, MPI_INT,
+					all_lists_flat_data, all_sizes,
+					displacements, MPI_INT, MPI_COMM_WORLD);
+			}
+
+			/* 5. Identify elements to keep and build the new list (for current row[list_idx]) */
+			/* current_node_in_original_list is already pointing to row[list_idx] */
+			while (current_node_in_original_list != NULL) {
+				data_to_check = current_node_in_original_list->data;
+				present_in_all_others = 1; /* Assume true */
+
+				if (size > 1) {
+					for (other_rank_idx = 0; other_rank_idx < size;
+					other_rank_idx++) {
+						if (other_rank_idx == rank) {
+							continue;
+						}
+
+						found_in_this_other_list = 0;
+						other_list_current_size =
+							all_sizes[other_rank_idx];
+
+						if (other_list_current_size > 0 &&
+						all_lists_flat_data != NULL) {
+							other_list_start_idx =
+								displacements
+									[other_rank_idx];
+							for (k = 0;
+							k <
+							other_list_current_size;
+							k++) {
+								if (all_lists_flat_data
+									[other_list_start_idx +
+									k] ==
+								data_to_check) {
+									found_in_this_other_list =
+										1;
+									break;
+								}
+							}
+						} /* If other_list_current_size is 0, found_in_this_other_list remains 0 */
+
+						if (!found_in_this_other_list) {
+							present_in_all_others = 0;
+							break;
+						}
+					}
+				} /* If size == 1, present_in_all_others remains 1, all elements kept */
+
+				if (present_in_all_others) {
+					new_filtered_list_head = append(
+						new_filtered_list_head, data_to_check);
+				}
+				current_node_in_original_list =
+					current_node_in_original_list->next;
+			}
+
+			/* 6. Replace old list (row[list_idx]) with the new list */
+			free_list(extended_grid[i][j]);
+			extended_grid[i][j] = new_filtered_list_head;
+
+			/* 7. Free allocated MPI-related memory for this iteration */
+			if (local_list_data != NULL) {
+				free(local_list_data);
+			}
+			free(all_sizes); /* all_sizes is always allocated if size > 0 */
+			free(displacements); /* displacements is always allocated if size > 0 */
+			if (all_lists_flat_data != NULL) {
+				free(all_lists_flat_data);
+			}
 		}
-		free(propagation[i]);
 	}
-	free(propagation);
 }

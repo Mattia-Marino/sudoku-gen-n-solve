@@ -30,6 +30,7 @@ SERIAL_OBJS := $(BUILD_DIR)/$(SERIAL_DIR)/main.o \
 PARALLEL_OBJS := $(BUILD_DIR)/$(PARALLEL_DIR)/main.o \
     $(BUILD_DIR)/sudoku_utils.o \
     $(BUILD_DIR)/linked_list.o \
+    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
     $(BUILD_DIR)/$(PARALLEL_DIR)/solver.o
 
 # Handle DEBUG flag from parent Makefile
