@@ -28,6 +28,8 @@ int main(int argc, char **argv)
 	/* Initialize MPI */
 	MPI_Init(&argc, &argv);
 
+	MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
+
 	int myrank, size;
     	MPI_Comm_size(MPI_COMM_WORLD, &size);
     	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -86,12 +88,12 @@ int main(int argc, char **argv)
 			/* If read failed because we reached EOF */
 			if (feof(file)) {
 				DPRINTF("Reached EOF\n");
-				free_grid(grid, n);
 				break;
 			} else {
 				fprintf(stderr, "Error: Failed to read grid from file\n");
 				free_grid(grid, n);
 				fclose(file);
+				MPI_Finalize();
 				return 1;
 			}
 		}
@@ -131,6 +133,13 @@ int main(int argc, char **argv)
 		DPRINTF("We are all past the barrier - %d\n", myrank);
 		fflush(stdout);
 
+		if (grid == NULL) {
+			DPRINTF("Error: Grid is NULL after solving\n");
+			fprintf(stderr, "Error: Grid is NULL after solving\n");
+			MPI_Finalize();
+			return 1;
+		}
+
 		/* Master process prints the computation time */
 		if (myrank == 0) {
 			DPRINTF("The proposed grid:\n");
@@ -140,14 +149,20 @@ int main(int argc, char **argv)
 
 			if (check_solved(grid, n))
 				++tot_solved;
-
-			free_grid(grid, n);
-		} else {
-			/* Free the grid on slave processes */
-			free_grid(grid, n);
 		}
 
+		/* Free the grid after solving */
+                free_grid(grid, n);
+		/* Set the grid to NULL to prevent accidental double-free*/
+		grid = NULL;  
+
 		MPI_Barrier(MPI_COMM_WORLD);
+	}
+
+	/* Free the grid after the loop if it hasn't been freed */
+	if (grid != NULL) {
+   	        free_grid(grid, n);
+    		grid = NULL;
 	}
 
 	DPRINTF("Process %d - Out of the loop\n", myrank);

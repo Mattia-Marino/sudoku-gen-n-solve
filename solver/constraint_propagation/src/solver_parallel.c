@@ -22,6 +22,9 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 	int start = rank * chunk_per_process; /* Starting row for this process */
 	int end = (rank == size - 1) ? n : start + chunk_per_process; /* Ending row for this process */
 
+	int *send_buffer; /* Data to send */
+ 	int *recv_buffer; /* Data to receive */
+
 	int ***already_propagated_rows;
 	int ***already_propagated_columns;
 	int ***already_propagated_boxes;
@@ -65,7 +68,17 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 
 	/* Print the extended grid */
 	DPRINTF("\nExtended grid:\n");
-	DPRINT_EXTENDED_GRID_PARALLEL(extended_grid, n);	
+	DPRINT_EXTENDED_GRID_PARALLEL(extended_grid, n);
+	
+	/* Allocate send_buffer and recv_buffer before the loop */
+	send_buffer = (int *)malloc(chunk_per_process * n * sizeof(int));
+	recv_buffer = (int *)malloc(n * n * sizeof(int));
+	if (send_buffer == NULL || recv_buffer == NULL) {
+   		fprintf(stderr, "Error: Unable to allocate memory for buffers\n");
+    		MPI_Abort(MPI_COMM_WORLD, 1);
+	}
+	DPRINTF("send_buffer size: %d\n", chunk_per_process * n);
+	DPRINTF("recv_buffer size: %d\n", n * n);	
 
 	/* Solve the Sudoku puzzle using constraint propagation */
 	do {
@@ -104,13 +117,30 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 
 		/* Reduce the changes across all processes */
 		int global_is_changed;
+		/* Fill send_buffer with the data to send */
+    		for (i = start; i < end; i++) {
+        		for (j = 0; j < n; j++) {
+            			send_buffer[(i - start) * n + j] = grid[i][j];
+        		}
+    		}
+		
+		DPRINTF("Process %d: Starting MPI_Allreduce\n", rank);
 		MPI_Allreduce(&is_changed, &global_is_changed, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+		DPRINTF("Process %d: Completed MPI_Allreduce\n", rank);
 		is_changed = global_is_changed;
 	
 		/* Synchronize the extended grid */
-		MPI_Allgather(MPI_IN_PLACE, chunk_per_process * n, MPI_INT,
-			      &grid[0][0], chunk_per_process * n, MPI_INT,
-			      MPI_COMM_WORLD);
+		DPRINTF("Process %d: Starting MPI_Allgather\n", rank);
+		MPI_Allgather(send_buffer, chunk_per_process * n, MPI_INT, recv_buffer,
+			 chunk_per_process * n, MPI_INT,MPI_COMM_WORLD);
+		DPRINTF("Process %d: Completed MPI_Allgather\n", rank);
+
+		 /* Copy data from recv_buffer back to grid */
+    		for (i = 0; i < n; i++) {
+        		for (j = 0; j < n; j++) {
+            			grid[i][j] = recv_buffer[i * n + j];
+        		}
+    		}
 
 		/* Print the updated extended grid */
 		DPRINTF("\nUpdated extended grid:\n");
@@ -118,7 +148,20 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 		DPRINTF("\n\n\n");
 	} while (is_changed);
 
+
+	DPRINTF("Exiting the do-while loop...\n");
+
+	/* Free send_buffer and recv_buffer after the loop */
+	DPRINTF("Freeing send_buffer and recv_buffer...\n");
+	free(send_buffer);
+	/* send_buffer = NULL; */
+	free(recv_buffer);
+	/*recv_buffer = NULL; */
+
+	DPRINTF("Buffers freed successfully.\n");
+
 	/* Count numbers left for progress */
+	DPRINTF("Counting numbers left...\n");
 	numbers_left = 0;
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
@@ -129,6 +172,7 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 			}
 		}
 	}
+
 	DPRINTF("Numbers left in the extended grid: %d\n", numbers_left);
 	DPRINTF("Progress: %2.1f%%\n",
 	       (double)((double)1 - (double)(numbers_left - n * n) /
@@ -149,9 +193,13 @@ int sudoku_solver_parallel(int **grid, int n, int rank, int size)
 	/* Free the extended grid */
 	DPRINTF("Freeing all resources\n");
 	free_extended_grid_parallel(extended_grid, n);
+	extended_grid = NULL;
 	free_propagation_matrix_parallel(already_propagated_rows, n);
+	already_propagated_rows = NULL;
 	free_propagation_matrix_parallel(already_propagated_columns, n);
+	already_propagated_columns = NULL;
 	free_propagation_matrix_parallel(already_propagated_boxes, n);
+	already_propagated_boxes = NULL;
 
 	DPRINTF("All done. Process %d going back to main\n", rank);
 
@@ -167,10 +215,12 @@ struct node ***extend_grid_parallel(int **grid, int n)
 	if (extended_grid == NULL) {
 		fprintf(stderr,
 			"Error: Unable to allocate memory for extended grid\n");
+		MPI_Abort(MPI_COMM_WORLD, 1);
 		return NULL;
 	}
 
 	for (i = 0; i < n; i++) {
+		DPRINTF("Allocating memory for extended_grid[%d]\n", i);
 		extended_grid[i] =
 			(struct node **)malloc(n * sizeof(struct node *));
 		if (extended_grid[i] == NULL) {
@@ -197,6 +247,7 @@ struct node ***extend_grid_parallel(int **grid, int n)
 				fprintf(stderr,
 					"Error: Unable to create or append node in extended grid\n");
 				free_extended_grid_parallel(extended_grid, n);
+				extended_grid = NULL;
 
 				return NULL;
 			}
@@ -963,12 +1014,15 @@ void free_extended_grid_parallel(struct node ***extended_grid, int n)
 			for (j = 0; j < n; j++) {
 				struct node *temp = extended_grid[i][j];
 				free_list(temp);
+				temp = NULL;
 			}
 
 			free(extended_grid[i]);
+			extended_grid[i] = NULL;
 		}
 
 		free(extended_grid);
+		extended_grid = NULL;
 	}
 }
 
@@ -981,8 +1035,11 @@ void free_propagation_matrix_parallel(int ***propagation, int n)
 	for (i = 0; i < sqrt_n; ++i) {
 		for (j = 0; j < n; ++j) {
 			free(propagation[i][j]);
+			propagation[i][j] = NULL;
 		}
 		free(propagation[i]);
+		propagation[i] = NULL;
 	}
 	free(propagation);
+	propagation = NULL;
 }
