@@ -9,5 +9,13 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 			  int **already_propagated, int depth,
 			  int start_row, int end_row);
 
+int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
+			  int **already_propagated, int depth,
+			  int start_col, int end_col);
+
+int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
+			  int **already_propagated, int depth,
+			  int start_row, int end_row);
+
 void communication(struct node ***extended_grid, int n, int rank, int size);
 #endif /* SOLVER_PARALLEL_H */
