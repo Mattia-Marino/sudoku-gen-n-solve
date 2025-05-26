@@ -16,6 +16,7 @@ a.out
 sudoku_generator
 serial_sudoku_solver
 parallel_sudoku_solver
+parallel_sudoku_solver_v1
 serial_sudoku_generator
 parallel_sudoku_generator
 

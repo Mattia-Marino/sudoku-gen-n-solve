@@ -46,4 +46,12 @@ int check_solved(int **grid, int n);
  */
 void display_sudoku(int **grid, int n);
 
+/**
+ * @brief Counts the number of lines in a given file and resets the file pointer to the beginning.
+ *
+ * @param filename The path to the file to be processed.
+ * @return The number of lines in the file, or -1 if the file cannot be opened.
+ */
+int count_lines_in_file(FILE *file);
+
 #endif /* SUDOKU_UTILS_H */

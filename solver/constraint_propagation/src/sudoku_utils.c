@@ -96,3 +96,40 @@ void display_sudoku(int **grid, int n)
 		printf("\n");
 	}
 }
+
+int count_lines_in_file(FILE *file) {
+	if (file == NULL) {
+		fprintf(stderr, "Error: Invalid file pointer (NULL) passed to countLinesAndReset_with_FILE_ptr.\n");
+		return -1; /* Indicate an error */
+	}
+
+	int lineCount = 0;
+	int ch;
+
+	/* Reset to the beginning of the file to ensure we count from the start */
+	rewind(file);
+
+	/* Read character by character and count newlines */
+	while ((ch = fgetc(file)) != EOF) {
+		if (ch == '\n') {
+		lineCount++;
+		}
+	}
+
+	/* Handle the case where the last line doesn't end with a newline */
+	if (ftell(file) > 0) {
+		/* Go back one character to check the very last character if it wasn't EOF right away */
+		fseek(file, -1, SEEK_END); /* Move to the last character */
+		ch = fgetc(file); /* Read the last character */
+
+		if (ch != '\n') {
+		lineCount++; /* Increment if the last character is not a newline */
+		}
+	}
+
+
+	/* Rewind the file pointer to the beginning again for subsequent processing */
+	rewind(file);
+
+	return lineCount;
+}

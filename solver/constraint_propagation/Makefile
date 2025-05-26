@@ -7,11 +7,13 @@ LDFLAGS := -lm
 # Program names
 SERIAL_PROGRAM := serial_sudoku_solver
 PARALLEL_PROGRAM := parallel_sudoku_solver
+PARALLEL_PROGRAM_V1 := parallel_sudoku_solver_v1
 
 # Allow specifying output directory from top-level Makefile
 BINDIR := .
 SERIAL_OUTPUT := $(BINDIR)/$(SERIAL_PROGRAM)
 PARALLEL_OUTPUT := $(BINDIR)/$(PARALLEL_PROGRAM)
+PARALLEL_OUTPUT_V1 := $(BINDIR)/$(PARALLEL_PROGRAM_V1)
 
 # Source files organization
 SRC_DIR := src
@@ -19,6 +21,7 @@ INCLUDE_DIR := include
 BUILD_DIR := build
 SERIAL_DIR := serial
 PARALLEL_DIR := parallel
+PARALLEL_DIR_V1 := parallel_v1
 
 # Serial objects
 SERIAL_OBJS := $(BUILD_DIR)/$(SERIAL_DIR)/main.o \
@@ -33,6 +36,11 @@ PARALLEL_OBJS := $(BUILD_DIR)/$(PARALLEL_DIR)/main.o \
     $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
     $(BUILD_DIR)/$(PARALLEL_DIR)/solver.o
 
+PARALLEL_OBJS_V1 := $(BUILD_DIR)/$(PARALLEL_DIR_V1)/main.o \
+    $(BUILD_DIR)/sudoku_utils.o \
+    $(BUILD_DIR)/linked_list.o \
+    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
+
 # Handle DEBUG flag from parent Makefile
 ifdef DEBUG
     CFLAGS += -g -DDEBUG
@@ -41,20 +49,21 @@ else
     CFLAGS += -g
 endif
 
-all: clean serial parallel
+all: clean serial parallel parallel_v1
 
 serial: $(SERIAL_OUTPUT)
 parallel: $(PARALLEL_OUTPUT)
+parallel_v1: $(PARALLEL_OUTPUT_V1)
 
 # Build configurations
 debug: CFLAGS += -g -DDEBUG
-debug: clean serial parallel
+debug: clean serial parallel parallel_v1
 
 release: CFLAGS += -O3 -DNDEBUG
-release: clean serial parallel
+release: clean serial parallel parallel_v1
 
 # Make sure build directories exist
-$(BUILD_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR):
+$(BUILD_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR_V1):
 	mkdir -p $@
 
 # Pattern rule for serial object files
@@ -69,6 +78,10 @@ $(BUILD_DIR)/$(SERIAL_DIR)/%.o: $(SRC_DIR)/$(SERIAL_DIR)/%.c | $(BUILD_DIR)/$(SE
 $(BUILD_DIR)/$(PARALLEL_DIR)/%.o: $(SRC_DIR)/$(PARALLEL_DIR)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR)
 	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
+# Pattern rule for parallel object files (V1)
+$(BUILD_DIR)/$(PARALLEL_DIR_V1)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V1)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V1)
+	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+
 # Link the serial program
 $(SERIAL_OUTPUT): $(SERIAL_OBJS)
 	@mkdir -p "$(BINDIR)"
@@ -76,6 +89,11 @@ $(SERIAL_OUTPUT): $(SERIAL_OBJS)
 
 # Link the parallel program
 $(PARALLEL_OUTPUT): $(PARALLEL_OBJS)
+	@mkdir -p "$(BINDIR)"
+	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+
+# Link the parallel program (V1)
+$(PARALLEL_OUTPUT_V1): $(PARALLEL_OBJS_V1)
 	@mkdir -p "$(BINDIR)"
 	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
@@ -92,7 +110,7 @@ uninstall:
 
 # Clean build files
 clean:
-	rm -f $(BINDIR)/$(SERIAL_PROGRAM) $(BINDIR)/$(PARALLEL_PROGRAM)
+	rm -f $(BINDIR)/$(SERIAL_PROGRAM) $(BINDIR)/$(PARALLEL_PROGRAM) $(BINDIR)/$(PARALLEL_PROGRAM_V1)
 	rm -f $(SERIAL_OBJS) $(PARALLEL_OBJS) $(SERIAL_OBJS:.o=.d) $(PARALLEL_OBJS:.o=.d)
 	rm -rf $(BUILD_DIR)
 
