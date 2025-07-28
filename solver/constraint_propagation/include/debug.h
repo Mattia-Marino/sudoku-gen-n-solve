@@ -24,6 +24,9 @@
 /* DPRINT_SUDOKU: Prints the sudoku grid */
 #define DPRINT_SUDOKU(...) display_sudoku(__VA_ARGS__)
 
+/* DPRINT_SUDOKU_COLLECTION: Prints all grids in the sudoku collection */
+#define DPRINT_SUDOKU_COLLECTION(...) display_sudoku_collection(__VA_ARGS__)
+
 #else
 
 /* Define macros as empty statements when DEBUG is not defined */
@@ -31,6 +34,7 @@
 #define DPRINT_LIST(...) do {} while (0)
 #define DPRINT_EXTENDED_GRID(...) do {} while (0)
 #define DPRINT_SUDOKU(...) do {} while (0)
+#define DPRINT_SUDOKU_COLLECTION(...) do {} while (0)
 
 #endif
 

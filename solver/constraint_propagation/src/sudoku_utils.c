@@ -96,3 +96,144 @@ void display_sudoku(int **grid, int n)
 		printf("\n");
 	}
 }
+
+sudoku_collection_t *create_sudoku_collection(int n, int initial_capacity)
+{
+	sudoku_collection_t *collection = (sudoku_collection_t *)malloc(sizeof(sudoku_collection_t));
+	if (collection == NULL) {
+		return NULL;
+	}
+
+	collection->grids = (int ***)malloc(initial_capacity * sizeof(int **));
+	if (collection->grids == NULL) {
+		free(collection);
+		return NULL;
+	}
+
+	collection->count = 0;
+	collection->n = n;
+	collection->capacity = initial_capacity;
+
+	return collection;
+}
+
+sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
+{
+	FILE *file;
+	int initial_capacity = 100; /* Start with capacity for 100 grids */
+	sudoku_collection_t *collection;
+	int **grid;
+	int read_status;
+
+	file = fopen(filename, "r");
+	if (!file) {
+		fprintf(stderr, "Error: Failed to open file %s\n", filename);
+		return NULL;
+	}
+
+	collection = create_sudoku_collection(n, initial_capacity);
+	if (collection == NULL) {
+		fprintf(stderr, "Error: Failed to create sudoku collection\n");
+		fclose(file);
+		return NULL;
+	}
+
+	while (1) {
+		grid = create_grid(n);
+		if (grid == NULL) {
+			fprintf(stderr, "Error: Failed to allocate memory for grid\n");
+			free_sudoku_collection(collection);
+			fclose(file);
+			return NULL;
+		}
+
+		read_status = read_grid_from_file(grid, file, n);
+
+		if (read_status != 0) {
+			/* If read failed because we reached EOF */
+			if (feof(file)) {
+				free_grid(grid, n); /* Free the unused grid */
+				break;
+			} else {
+				fprintf(stderr, "Error: Failed to read grid from file\n");
+				free_grid(grid, n);
+				free_sudoku_collection(collection);
+				fclose(file);
+				return NULL;
+			}
+		}
+
+		/* Expand collection if needed */
+		if (collection->count >= collection->capacity) {
+			int new_capacity = collection->capacity * 2;
+			int ***new_grids = (int ***)realloc(collection->grids, 
+							    new_capacity * sizeof(int **));
+			if (new_grids == NULL) {
+				fprintf(stderr, "Error: Failed to expand sudoku collection\n");
+				free_grid(grid, n);
+				free_sudoku_collection(collection);
+				fclose(file);
+				return NULL;
+			}
+			collection->grids = new_grids;
+			collection->capacity = new_capacity;
+		}
+
+		/* Add grid to collection */
+		collection->grids[collection->count] = grid;
+		collection->count++;
+	}
+
+	fclose(file);
+	printf("Successfully read %d Sudoku grids from file.\n", collection->count);
+	return collection;
+}
+
+void display_sudoku_collection(sudoku_collection_t *collection)
+{
+	int i; /* Loop variable */
+
+	if (collection == NULL || collection->grids == NULL) {
+		printf("No Sudoku grids to display.\n");
+		return;
+	}
+
+	for (i = 0; i < collection->count; i++) {
+		printf("Sudoku Grid %d:\n", i + 1);
+		display_sudoku(collection->grids[i], collection->n);
+		printf("\n");
+	}
+
+	printf("Total Sudoku grids in collection: %d\n", collection->count);
+	printf("Size of each grid: %d x %d\n", collection->n, collection->n);
+	printf("Current capacity of collection: %d\n", collection->capacity);
+}
+
+void free_sudoku_collection(sudoku_collection_t *collection)
+{
+	int i;
+
+	if (collection == NULL) {
+		return;
+	}
+
+	if (collection->grids != NULL) {
+		for (i = 0; i < collection->count; i++) {
+			if (collection->grids[i] != NULL) {
+				free_grid(collection->grids[i], collection->n);
+			}
+		}
+		free(collection->grids);
+	}
+
+	free(collection);
+}
+
+int **get_grid_from_collection(sudoku_collection_t *collection, int index)
+{
+	if (collection == NULL || index < 0 || index >= collection->count) {
+		return NULL;
+	}
+
+	return collection->grids[index];
+}
