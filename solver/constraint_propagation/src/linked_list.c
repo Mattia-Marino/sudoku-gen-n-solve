@@ -53,6 +53,9 @@ int count_different_values(struct node *a, struct node *b)
 
 int is_last_node(struct node *node)
 {
+	if(node == NULL){
+		return 0;
+	}
 	return (node->next == NULL);
 }
 
@@ -105,26 +108,32 @@ struct node *delete_at_given_value(struct node *head, int value)
 	if (temp == NULL)
 		return head;
 
-	prev->next = temp->next;
+	if(prev != NULL){
+		prev->next = temp->next;
+	}
 	free(temp);
 
 	return head;
 }
 
+/* FIX: Corrected loop to properly free all nodes after the head. */
 struct node *delete_all_but_head(struct node *head)
 {
-	struct node *temp = head;
+	struct node *current;
 	struct node *to_delete;
 
 	if (head == NULL)
 		return NULL;
 
-	while (temp->next != NULL) {
-		to_delete = temp->next;
-		temp->next = to_delete->next;
+	/* If there are nodes after the head, free them one by one */
+	current = head -> next;
+	while (current != NULL) {
+		to_delete = current;
+		current = current->next;
 		free(to_delete);
 	}
 
+	head->next = NULL; /* Ensure head points to NULL, as all others are deleted */
 	return head;
 }
 
@@ -148,9 +157,14 @@ struct node *add_new_candidates(struct node *candidates, struct node *new)
 			temp_old = temp_old->next;
 		}
 
-		if (!found)
+		if (!found){
 			candidates = append(candidates, temp_new->data);
-		
+			/* Important: check if append failed */
+			if (candidates == NULL && temp_new->data != 0) { /* If append returned NULL and it wasn't due to adding 0 */
+				fprintf(stderr, "Error: Failed to append new candidate %d\n", temp_new->data);
+				return NULL;
+			}
+		}
 		temp_new = temp_new->next;
 	}
 
@@ -172,8 +186,7 @@ int get_head_value(struct node *head)
 		return head->data;
 	else
 		return -1;
-}
-		*/
+} */
 
 void free_list(struct node *head)
 {

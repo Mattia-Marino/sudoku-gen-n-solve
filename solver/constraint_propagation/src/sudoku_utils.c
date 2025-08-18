@@ -4,6 +4,8 @@
 #include <math.h>
 
 #include "../include/sudoku_utils.h"
+#include "../include/linked_list.h"
+#include "../include/bitmask_utils.h"
 
 int **create_grid(int n)
 {
@@ -105,7 +107,14 @@ sudoku_collection_t *create_sudoku_collection(int n, int initial_capacity)
 	}
 
 	collection->grids = (int ***)malloc(initial_capacity * sizeof(int **));
-	if (collection->grids == NULL) {
+	collection->extended_grids = (struct node ****)malloc(initial_capacity * sizeof(struct node ***));
+	if (collection->grids == NULL || collection->extended_grids == NULL) {
+		if (collection->grids != NULL) {
+			free(collection->grids);
+		}
+		if (collection->extended_grids != NULL) {
+			free(collection->extended_grids);
+		}
 		free(collection);
 		return NULL;
 	}
@@ -123,6 +132,7 @@ sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
 	int initial_capacity = 100; /* Start with capacity for 100 grids */
 	sudoku_collection_t *collection;
 	int **grid;
+	struct node *** extended;
 	int read_status;
 
 	file = fopen(filename, "r");
@@ -175,12 +185,24 @@ sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
 				fclose(file);
 				return NULL;
 			}
+
 			collection->grids = new_grids;
 			collection->capacity = new_capacity;
 		}
 
+		/* Extend the grid with candidates*/
+		extended = extend_grid_with_candidates(grid, n);
+		if(extended == NULL){
+			fprintf(stderr, "Error: Failed to extend grid with candidates\n");
+			free_grid(grid, n);
+			free_sudoku_collection(collection);
+			fclose(file);
+			return NULL;
+		}
+
 		/* Add grid to collection */
 		collection->grids[collection->count] = grid;
+		collection->extended_grids[collection->count] = extended;
 		collection->count++;
 	}
 
@@ -211,7 +233,7 @@ void display_sudoku_collection(sudoku_collection_t *collection)
 
 void free_sudoku_collection(sudoku_collection_t *collection)
 {
-	int i;
+	int i, r, c;
 
 	if (collection == NULL) {
 		return;
@@ -222,8 +244,19 @@ void free_sudoku_collection(sudoku_collection_t *collection)
 			if (collection->grids[i] != NULL) {
 				free_grid(collection->grids[i], collection->n);
 			}
+	            	if (collection->extended_grids && collection->extended_grids[i] != NULL) {
+                	/* Free each extended grid cell’s linked list */
+                	for (r = 0; r < collection->n; r++) {
+                    		for (c = 0; c < collection->n; c++) {
+                       			free_list(collection->extended_grids[i][r][c]);
+                   	 	}
+                    		free(collection->extended_grids[i][r]);
+                	}
+                	free(collection->extended_grids[i]);
+			}
 		}
 		free(collection->grids);
+		free(collection->extended_grids);
 	}
 
 	free(collection);
@@ -236,4 +269,12 @@ int **get_grid_from_collection(sudoku_collection_t *collection, int index)
 	}
 
 	return collection->grids[index];
+}
+
+struct node ***get_extended_grid_from_collection(sudoku_collection_t *collection, int index)
+{
+	if (collection == NULL || index < 0 || index >= collection->count) {
+		return NULL;
+	}
+	return collection->extended_grids[index];
 }

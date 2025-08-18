@@ -192,6 +192,7 @@ struct node ***extend_grid(int **grid, int n)
 	return extended_grid;
 }
 
+
 void initialize_propagation_matrix(int **matrix, int n)
 {
 	int i, j;

@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: GPL-3.0 */
 
-#include <math.h>
+#include <math.h>   
 #include <mpi.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#include <stdio.h>  
+#include <stdlib.h> 
+#include <string.h> 
+#include <time.h>   
 
-#include "../../include/debug.h"
-#include "../../include/solver.h"
-#include "../../include/solver_parallel.h"
-#include "../../include/sudoku_utils.h"
-#include "../../include/linked_list.h"
+#include "../../include/debug.h"            
+#include "../../include/solver.h"           
+#include "../../include/solver_parallel.h"  
+#include "../../include/sudoku_utils.h"     
+#include "../../include/linked_list.h"      
+#include "../../include/bitmask_utils.h"    
 
-/* No longer using work_item_t structure - using clean assignment pattern from new_main.c */
 
 /** 
  * @brief Helper function for master to assign a sudoku task to a slave.
@@ -93,14 +93,22 @@ int try_assign_sudoku_task_to_slave(int slave_rank, sudoku_collection_t *collect
 	return 0; /* No task assigned */
 }
 
+int int_log2(int x) {
+	int result = 0;
+	while (x > 1) {
+		x >>= 1;
+		result++;
+	}
+	return result;
+}
+
 int main(int argc, char **argv)
 {
 	char *filename;
-	int i, j; /* Loop variables */
-	int n = 0;    /* Matrix size */
+	int i, j, k, l, r, c; /* Loop variables */
+	int n = 0;
 	int sqrt_n;
 	int tot_solved = 0;
-	int **grid;
 	sudoku_collection_t *collection = NULL;
 	clock_t start_time;
 	clock_t end_time;
@@ -110,25 +118,23 @@ int main(int argc, char **argv)
 	int num_slaves;
 	int s_rank;
 	int terminate_signal = -1;
-	int comp; /* Component type for slaves */
-	int total_changes_made = 0; /* Track if any slave made changes */
+	int comp;
+	int bit;
+	int total_changes_made = 0; 
 	MPI_Status status;
 
-	/* Slaves variables */
+	/* Slave variables */
 	int current_grid_idx, current_component_type, current_slave_ordinal;
-	int **slave_grid = NULL;
-	int changes_made;
+	struct node ***slave_extended_grid = NULL; /* Slave works on extended grid */
+	int changes_made; /* Total changes made by this slave in current task */
 	int depth_idx;
-	int depth;
-
 	int rank, size;
-	const int K_SLAVES_PER_GRID = 3; /* rows, columns, boxes */
+	const int K_SLAVES_PER_GRID = 3; /* One slave for rows, one for columns, one for boxes */
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	/* Broadcast the problem size to all processes */
 	if (rank == 0) {
 		if (argc != 3) {
 			fprintf(stderr, "Usage: %s <size> <filename>\n", argv[0]);
@@ -139,21 +145,17 @@ int main(int argc, char **argv)
 	}
 	MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-	/* Master code */
-	if(rank == 0){
-		/* Read the size of the file from command line */
-		/* n already set above from argv[1] */
-
-		/* Checks on puzzle size */
+	if (rank == 0) {
 		if (n < 1) {
 			printf("Master: n is 0 or negative, no work to do.\n");
 			num_slaves = size - 1;
-			if (num_slaves > 0)
+			if (num_slaves > 0) {
 				for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
-					terminate_signal = -1;
-					MPI_Send(&terminate_signal, 1, MPI_INT,
-						 s_rank, 0, MPI_COMM_WORLD);
+				MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
 				}
+			}
+			MPI_Finalize();
+			return 0;
 		}
 
 		sqrt_n = (int)sqrt(n);
@@ -163,420 +165,471 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		/* Open and read the file */
 		filename = argv[2];
 		collection = read_all_sudokus_from_file(filename, n);
-		if(collection == NULL) {
+		if (collection == NULL) {
 			fprintf(stderr, "Error: Failed to read Sudoku grids from file %s\n", filename);
 			MPI_Finalize();
 			return 1;
 		}
-		
+
 		start_time = clock();
-		
-		/* Calculate number of available slaves */
 		num_slaves = size - 1;
-		
+
 		if (num_slaves == 0) {
 			printf("No slaves available. Master will solve all grids sequentially.\n");
 			for (i = 0; i < collection->count; i++) {
-				grid = get_grid_from_collection(collection, i);
-				DPRINTF("Solving grid %d...\n", i);
-				DPRINT_SUDOKU(grid, n);
-				sudoku_solver(grid, n);
-				if (check_solved(grid, n)) {
-					tot_solved++;
+					int **original_int_grid = collection->grids[i]; 
+					DPRINTF("Solving grid %d...\n", i);
+					DPRINT_SUDOKU(original_int_grid, n);
+					sudoku_solver(original_int_grid, n); 
+					if (check_solved(original_int_grid, n)) { 
+						tot_solved++;
 				}
 			}
-		}else if (num_slaves > 0 && num_slaves < K_SLAVES_PER_GRID) {
+		} else if (num_slaves < K_SLAVES_PER_GRID) {
 			fprintf(stderr,
-					"Master: Error - Not enough slaves (%d) to assign %d per grid. Need at least %d slaves.\n",
-					num_slaves, K_SLAVES_PER_GRID,
-					K_SLAVES_PER_GRID);
-				for (s_rank = 1; s_rank <= num_slaves;
-				     ++s_rank) {
-					MPI_Send(&terminate_signal, 1, MPI_INT,
-						 s_rank, 0, MPI_COMM_WORLD);
-		}
+				"Master: Error - Not enough slaves (%d) to assign %d per grid. Need at least %d slaves.\n",
+				num_slaves, K_SLAVES_PER_GRID, K_SLAVES_PER_GRID);
+			for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
+				MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
+			}
+			MPI_Finalize();
+			return 1;
 		} else {
-			/* Master-slave logic using clean assignment pattern */
 			int *slaves_assigned_to_grid_count = (int *)calloc(collection->count, sizeof(int));
 			int *grid_is_completed = (int *)calloc(collection->count, sizeof(int));
-			int **grid_components_completed = (int **)malloc(collection->count * sizeof(int *)); /* Track which components completed per grid */
+			int **grid_components_completed = (int **)malloc(collection->count * sizeof(int *));
 			int next_grid_idx_to_start_assigning = 0;
-			int **temp_received_grid = NULL;
+			int **temp_received_bitmask_grid = NULL;
+
 
 			if (slaves_assigned_to_grid_count == NULL || grid_is_completed == NULL || grid_components_completed == NULL) {
 				fprintf(stderr, "Master: Failed to allocate tracking arrays.\n");
 				if (slaves_assigned_to_grid_count) free(slaves_assigned_to_grid_count);
 				if (grid_is_completed) free(grid_is_completed);
-				if (grid_components_completed) free(grid_components_completed);
+				if (grid_components_completed) {
+					for(k=0; k<collection->count; ++k) free(grid_components_completed[k]);
+					free(grid_components_completed);
+				}
 				MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 				return EXIT_FAILURE;
 			}
 
-			/* Initialize component tracking arrays */
 			for (i = 0; i < collection->count; i++) {
-				grid_components_completed[i] = (int *)calloc(K_SLAVES_PER_GRID, sizeof(int)); /* 0=rows, 1=cols, 2=boxes */
+				grid_components_completed[i] = (int *)calloc(K_SLAVES_PER_GRID, sizeof(int));
 				if (grid_components_completed[i] == NULL) {
 					fprintf(stderr, "Master: Failed to allocate component tracking array for grid %d.\n", i);
-					MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-					return EXIT_FAILURE;
+					for(k=0; k<i; ++k) free(grid_components_completed[k]);
+						free(slaves_assigned_to_grid_count);
+						free(grid_is_completed);
+						free(grid_components_completed);
+						MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+						return EXIT_FAILURE;
 				}
 			}
 
-			/* Allocate temp grid for receiving results */
-			temp_received_grid = create_grid(n);
-			if (temp_received_grid == NULL) {
-				fprintf(stderr, "Master: Failed to allocate temp_received_grid.\n");
+			temp_received_bitmask_grid = create_grid(n);
+			if (temp_received_bitmask_grid == NULL) {
+				fprintf(stderr, "Master: Failed to allocate temp_received_bitmask_grid.\n");
 				free(slaves_assigned_to_grid_count);
 				free(grid_is_completed);
-				MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-				return EXIT_FAILURE;
+				for (i = 0; i < collection->count; i++) free(grid_components_completed[i]);
+					free(grid_components_completed);
+					MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+					return EXIT_FAILURE;
 			}
 
 			printf("Master: Starting parallel processing with %d slaves\n", num_slaves);
-			
-			/* Phase 1: Initial dispatch to slaves */
+
 			int slaves_given_work = 0;
 			for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
-				int assigned = try_assign_sudoku_task_to_slave(
-					s_rank, collection, n,
-					&next_grid_idx_to_start_assigning,
-					slaves_assigned_to_grid_count,
-					grid_is_completed, K_SLAVES_PER_GRID);
-				if (assigned) {
-					slaves_given_work++;
-				} else {
-					/* This slave couldn't be assigned a task initially */
-					MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
+					int assigned = try_assign_sudoku_task_to_slave(
+							s_rank, collection, n,
+							&next_grid_idx_to_start_assigning,
+							slaves_assigned_to_grid_count,
+							grid_is_completed, K_SLAVES_PER_GRID);
+					if (assigned) {
+						slaves_given_work++;
+					} else {
+						MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
 				}
 			}
 			printf("Master: Initially assigned work to %d slaves\n", slaves_given_work);
 
-			/* Phase 2: Iterative rounds with slave communication */
 			int round = 0;
-			int max_rounds = 5; /* Maximum iterative rounds */
+			int max_rounds = 50;
 			int global_changes_this_round = 0;
-			
-			do {
-				round++;
-				global_changes_this_round = 0;
-				printf("Master: Starting iterative round %d\n", round);
-				
-				/* Reset component completion tracking for this round */
-				for (i = 0; i < collection->count; i++) {
-					for (comp = 0; comp < K_SLAVES_PER_GRID; comp++) {
-						grid_components_completed[i][comp] = 0;
-					}
-				}
-				
-				/* Collect results from all active slaves */
-				int slaves_completed_this_round = 0;
-				while (slaves_completed_this_round < slaves_given_work) {
-					/* Receive completed work from a slave */
-					int received_grid_idx, received_component_type, received_slave_ordinal;
-					int changes_flag;
 
-					MPI_Recv(&received_grid_idx, 1, MPI_INT, MPI_ANY_SOURCE, 10, MPI_COMM_WORLD, &status);
-					MPI_Recv(&received_component_type, 1, MPI_INT, status.MPI_SOURCE, 11, MPI_COMM_WORLD, &status);
-					MPI_Recv(&received_slave_ordinal, 1, MPI_INT, status.MPI_SOURCE, 12, MPI_COMM_WORLD, &status);
-					MPI_Recv(&changes_flag, 1, MPI_INT, status.MPI_SOURCE, 13, MPI_COMM_WORLD, &status);
+			if (slaves_given_work > 0 && collection->count > 0) {
+				do {
+					round++;
+					global_changes_this_round = 0;
+					printf("Master: Starting iterative round %d\n", round);
 
-					/* Receive the processed grid back */
-					for (i = 0; i < n; i++) {
-						MPI_Recv(temp_received_grid[i], n, MPI_INT, status.MPI_SOURCE, 14 + i, MPI_COMM_WORLD, &status);
-					}
-
-					int reporting_slave_rank = status.MPI_SOURCE;
-
-					/* Update the grid in collection with received results */
-					grid = get_grid_from_collection(collection, received_grid_idx);
-					for (i = 0; i < n; i++) {
-						for (j = 0; j < n; j++) {
-							grid[i][j] = temp_received_grid[i][j];
+					/* Reset component completion tracking for this round */
+					for (i = 0; i < collection->count; i++) {
+						for (comp = 0; comp < K_SLAVES_PER_GRID; comp++) {
+							grid_components_completed[i][comp] = 0;
 						}
 					}
 
-					if (changes_flag) {
-						total_changes_made++;
-						global_changes_this_round++;
-						printf("Master: Round %d - Slave %d made changes to grid %d (component type %d)\n",
-						       round, reporting_slave_rank, received_grid_idx, received_component_type);
-					} else {
-						printf("Master: Round %d - Slave %d made no changes to grid %d (component type %d)\n",
-						       round, reporting_slave_rank, received_grid_idx, received_component_type);
-					}
+					int slaves_completed_this_round = 0;
+					while (slaves_completed_this_round < slaves_given_work) {
+						int received_grid_idx, received_component_type, received_slave_ordinal;
+						int changes_flag_from_slave; 
 
-					/* Mark this component as completed for this round */
-					grid_components_completed[received_grid_idx][received_component_type] = 1;
-					slaves_completed_this_round++;
-				}
-				
-				printf("Master: Round %d completed with %d total changes\n", round, global_changes_this_round);
-				
-				/* Check if we should continue iterating */
-				if (global_changes_this_round > 0 && round < max_rounds) {
-					printf("Master: Changes detected, starting next round...\n");
-					
-					/* Send updated grids back to slaves for next round */
-					for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
-						/* Find which grid this slave was working on */
-						int slave_grid_idx = -1;
-						int slave_component_type = -1;
-						
-						/* Simple assignment: slave 1->grid 0 rows, slave 2->grid 0 cols, slave 3->grid 0 boxes, then cycle */
-						slave_grid_idx = ((s_rank - 1) / K_SLAVES_PER_GRID) % collection->count;
-						slave_component_type = (s_rank - 1) % K_SLAVES_PER_GRID;
-						
-						if (slave_grid_idx < collection->count && !grid_is_completed[slave_grid_idx]) {
-							/* Send grid index */
-							MPI_Send(&slave_grid_idx, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
-							
-							/* Send component type and slave ordinal */
-							MPI_Send(&slave_component_type, 1, MPI_INT, s_rank, 1, MPI_COMM_WORLD);
-							int slave_ordinal = ((s_rank - 1) % K_SLAVES_PER_GRID) + 1;
-							MPI_Send(&slave_ordinal, 1, MPI_INT, s_rank, 2, MPI_COMM_WORLD);
-							
-							/* Send the updated grid */
-							grid = get_grid_from_collection(collection, slave_grid_idx);
-							if (grid != NULL) {
-								for (i = 0; i < n; i++) {
-									MPI_Send(grid[i], n, MPI_INT, s_rank, 3 + i, MPI_COMM_WORLD);
+						/* Receive data from slave */
+						MPI_Recv(&received_grid_idx, 1, MPI_INT, MPI_ANY_SOURCE, 10, MPI_COMM_WORLD, &status);
+						MPI_Recv(&received_component_type, 1, MPI_INT, status.MPI_SOURCE, 11, MPI_COMM_WORLD, &status);
+						MPI_Recv(&received_slave_ordinal, 1, MPI_INT, status.MPI_SOURCE, 12, MPI_COMM_WORLD, &status);
+						MPI_Recv(&changes_flag_from_slave, 1, MPI_INT, status.MPI_SOURCE, 13, MPI_COMM_WORLD, &status); /* Now receives total changes count */
+
+						for (i = 0; i < n; i++) {
+							MPI_Recv(temp_received_bitmask_grid[i], n, MPI_INT, status.MPI_SOURCE, 14 + i, MPI_COMM_WORLD, &status);
+						}
+
+						int reporting_slave_rank = status.MPI_SOURCE;
+
+						struct node ***master_current_ext_grid = get_extended_grid_from_collection(collection, received_grid_idx);
+						int candidates_changed_by_merge = 0;
+
+						/* Master: MERGE received bitmasks with its current global extended grid */
+						for (i = 0; i < n; i++) {
+							for (j = 0; j < n; j++) {
+								int master_current_mask = 0;
+								struct node *node_ptr = master_current_ext_grid[i][j];
+								while (node_ptr != NULL) {
+									if (node_ptr->data >= 1 && node_ptr->data <= n) {
+										master_current_mask |= (1 << (node_ptr->data - 1));
+									}
+									node_ptr = node_ptr->next;
+								}
+
+								/* Bitwise AND*/
+								int new_merged_mask = master_current_mask & temp_received_bitmask_grid[i][j];
+
+								if (new_merged_mask != master_current_mask) {
+									candidates_changed_by_merge += __builtin_popcount(master_current_mask) - __builtin_popcount(new_merged_mask); /* Count actual candidate eliminations */
+									free_list(master_current_ext_grid[i][j]);
+									master_current_ext_grid[i][j] = NULL;
+
+									for (bit = 0; bit < n; bit++) {
+										if ((new_merged_mask >> bit) & 1) {
+											master_current_ext_grid[i][j] = append(master_current_ext_grid[i][j], bit + 1);
+										}
+									}
 								}
 							}
+						}
+
+						if (changes_flag_from_slave > 0 || candidates_changed_by_merge > 0) {
+							/* Add slave's changes and master's merge changes */
+							total_changes_made += changes_flag_from_slave + candidates_changed_by_merge; 
+							global_changes_this_round += changes_flag_from_slave + candidates_changed_by_merge;
+							printf("Master: Round %d - Slave %d reported %d changes to grid %d (type %d), master merged %d more changes. Total global this round: %d\n",
+								round, reporting_slave_rank, changes_flag_from_slave, received_grid_idx, received_component_type, candidates_changed_by_merge, global_changes_this_round);
 						} else {
-							/* No more work for this slave */
-							MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
-							slaves_given_work--; /* Reduce count for next round */
+							printf("Master: Round %d - Slave %d made no changes to grid %d (type %d), no master merge changes. Total global this round: %d\n",
+								round, reporting_slave_rank, received_grid_idx, received_component_type, global_changes_this_round);
+						}
+
+						grid_components_completed[received_grid_idx][received_component_type] = 1;
+						slaves_completed_this_round++;
+
+						int assigned_new_work = try_assign_sudoku_task_to_slave(
+						reporting_slave_rank, collection, n,
+						&next_grid_idx_to_start_assigning,
+						slaves_assigned_to_grid_count,
+						grid_is_completed, K_SLAVES_PER_GRID);
+
+						if (!assigned_new_work) {
+							MPI_Send(&terminate_signal, 1, MPI_INT, reporting_slave_rank, 0, MPI_COMM_WORLD);
+							slaves_given_work--;
+							printf("Master: Terminating slave %d due to no more work available.\n", reporting_slave_rank);
 						}
 					}
-				} else {
-					/* No more changes or max rounds reached - terminate all slaves */
-					printf("Master: No more changes or max rounds reached, terminating slaves...\n");
-					for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
-						MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
-					}
-					break;
-				}
-				
-			} while (global_changes_this_round > 0 && round < max_rounds);
 
-			/* Clean up */
+					printf("Master: Round %d completed with %d global changes in candidate counts.\n", round, global_changes_this_round);
+
+					int any_grid_unsolved = 0;
+					for(i=0; i<collection->count; ++i) {
+						if(!check_solved_extended(get_extended_grid_from_collection(collection, i), n)) {
+							any_grid_unsolved = 1;
+							break;
+						}
+					}
+
+					if (global_changes_this_round > 0 && round < max_rounds && any_grid_unsolved) {
+						printf("Master: Changes detected and unsolved grids remain, starting next round...\n");
+					} else {
+						printf("Master: No more global changes, max rounds reached, or all grids solved. Terminating remaining slaves...\n");
+						for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
+							/* Ensure all currently active slaves get termination signal */
+							MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
+						}
+						break;
+					}
+				} while (slaves_given_work > 0);
+			} else {
+				printf("Master: No initial work was assigned to any slave or no grids to solve.\n");
+				for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
+					MPI_Send(&terminate_signal, 1, MPI_INT, s_rank, 0, MPI_COMM_WORLD);
+				}
+			}
+
 			free(slaves_assigned_to_grid_count);
 			free(grid_is_completed);
 			for (i = 0; i < collection->count; i++) {
-				free(grid_components_completed[i]);
+				if(grid_components_completed[i]) free(grid_components_completed[i]);
 			}
 			free(grid_components_completed);
-			free_grid(temp_received_grid, n);
+			free_grid(temp_received_bitmask_grid, n);
 		}
-			/* Count solved grids */
-			printf("Master: Checking final status of all grids...\n");
-			for (i = 0; i < collection->count; i++) {
-				grid = get_grid_from_collection(collection, i);
-				if (check_solved(grid, n)) {
-					tot_solved++;
-					printf("Master: Grid %d - SOLVED\n", i);
-				} else {
-					printf("Master: Grid %d - NOT SOLVED\n", i);
+
+		printf("Master: Checking final status of all grids...\n");
+		for (i = 0; i < collection->count; i++) {
+			struct node*** final_ext_grid = get_extended_grid_from_collection(collection, i);
+			if (check_solved_extended(final_ext_grid, n)) {
+				tot_solved++;
+				printf("Master: Grid %d - SOLVED\n", i);
+				int** final_int_grid_for_print = convert_extended_to_bitmask_grid(final_ext_grid, n);
+				for(r=0; r<n; ++r) {
+				for(c=0; c<n; ++c) {
+					int mask = final_int_grid_for_print[r][c];
+					/* Check if only one bit is set (power of 2) */
+					if (mask && (mask & (mask - 1)) == 0) { 
+						/* Convert bit to value */
+						final_int_grid_for_print[r][c] = int_log2(mask) + 1; 
+					} else {
+						/* Display as 0 if not uniquely solved */
+						final_int_grid_for_print[r][c] = 0; 
+					}
 				}
-				DPRINT_SUDOKU(grid, n);
+				}
+				DPRINT_SUDOKU(final_int_grid_for_print, n);
+				free_grid(final_int_grid_for_print, n);
+			} else {
+				printf("Master: Grid %d - NOT SOLVED\n", i);
+				int** partial_int_grid_for_print = convert_extended_to_bitmask_grid(final_ext_grid, n);
+				for(r=0; r<n; ++r) {
+					for(c=0; c<n; ++c) {
+						int mask = partial_int_grid_for_print[r][c];
+						if (mask && (mask & (mask - 1)) == 0) {
+							partial_int_grid_for_print[r][c] = int_log2(mask) + 1;
+						} else {
+							partial_int_grid_for_print[r][c] = 0;
+						}
+					}
+				}
+				DPRINT_SUDOKU(partial_int_grid_for_print, n);
+				free_grid(partial_int_grid_for_print, n);
 			}
-			printf("Master: Total grids solved: %d out of %d\n", tot_solved, collection->count);
-			printf("Master: Total constraint propagation changes made: %d\n", total_changes_made);
-		
+		}
+		printf("Master: Total grids solved: %d out of %d\n", tot_solved, collection->count);
+		printf("Master: Total constraint propagation changes made: %d\n", total_changes_made);
+
 		printf("\nMaster: Work distribution summary:\n");
 		printf("- Total grids: %d\n", collection->count);
 		printf("- Total slaves: %d\n", num_slaves);
 		printf("- Total constraint propagation changes made: %d\n", total_changes_made);
-		
+
 		end_time = clock();
 		computation_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
 
-		printf("\nTotal computation completed in %.6f seconds.\n",
-		computation_time);
-
+		printf("\nTotal computation completed in %.6f seconds.\n", computation_time);
 		printf("Sudokus completely solved: %d\n\n", tot_solved);
-		
-		/* Clean up */
+
 		free_sudoku_collection(collection);
 	} else { /* Slave processes (rank > 0) */
-		
-		/* Wait for first work assignment or termination signal */
+		int **temp_received_bitmask_grid = NULL;
+		slave_extended_grid = NULL;
+
 		MPI_Recv(&current_grid_idx, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
-		
-		if (current_grid_idx != terminate_signal && n > 0) {
-			/* Allocate memory for the grid */
-			slave_grid = create_grid(n);
-			if (slave_grid == NULL) {
-				fprintf(stderr, "Slave %d: Failed to allocate grid memory\n", rank);
+
+		if (current_grid_idx != terminate_signal && n > 0 && current_grid_idx != -2) {
+			temp_received_bitmask_grid = create_grid(n);
+			if (temp_received_bitmask_grid == NULL) {
+				fprintf(stderr, "Slave %d: Failed to allocate temp_received_bitmask_grid\n", rank);
 				MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-				return EXIT_FAILURE;
 			}
 		}
-		
+
 		while (current_grid_idx != terminate_signal) {
-			if (n == 0) { /* Should have been caught by terminate_signal, but as a safeguard */
+			if (n == 0 || current_grid_idx == -2) {
+				fprintf(stderr, "Slave %d: Received special signal (n=0 or error), terminating.\n", rank);
 				break;
 			}
 
-			/* Receive component type and slave ordinal */
 			MPI_Recv(&current_component_type, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
 			MPI_Recv(&current_slave_ordinal, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, &status);
-			
-			/* Receive the grid */
+
 			for (i = 0; i < n; i++) {
-				MPI_Recv(slave_grid[i], n, MPI_INT, 0, 3 + i, MPI_COMM_WORLD, &status);
+				MPI_Recv(temp_received_bitmask_grid[i], n, MPI_INT, 0, 3 + i, MPI_COMM_WORLD, &status);
 			}
-			
+
 			printf("Slave %d: Processing grid %d, component type %d (slave ordinal %d)\n",
-			       rank, current_grid_idx, current_component_type, current_slave_ordinal);
+				rank, current_grid_idx, current_component_type, current_slave_ordinal);
+
+			if (slave_extended_grid) {
+				free_extended_grid(slave_extended_grid, n);
+			}
+			slave_extended_grid = convert_bitmask_to_extended_grid(temp_received_bitmask_grid, n);
 			
-			/* Create extended grid and process using existing parallel solver functions */
-			struct node ***extended_grid = extend_grid(slave_grid, n);
-			if (extended_grid == NULL) {
-				fprintf(stderr, "Slave %d: Failed to create extended grid\n", rank);
+			if (slave_extended_grid == NULL) {
+				fprintf(stderr, "Slave %d: Failed to convert bitmask grid to extended grid\n", rank);
 				changes_made = 0;
 			} else {
-				int sqrt_n = (int)sqrt(n);
-				int max_depth = (int)floor((double)n / 2);
-				int ***already_propagated = (int ***)malloc(max_depth * sizeof(int **));
-				
-				for (depth_idx = 0; depth_idx < max_depth; depth_idx++) {
-					already_propagated[depth_idx] = (int **)malloc(n * sizeof(int *));
-					for (j = 0; j < n; j++) {
-						already_propagated[depth_idx][j] = (int *)malloc(n * sizeof(int));
-					}
-					initialize_propagation_matrix(already_propagated[depth_idx], n);
-				}
-				
-				/* Perform constraint propagation using existing parallel solver functions */
-				printf("Slave %d: Starting constraint propagation for grid %d, component type %d\n", 
-				       rank, current_grid_idx, current_component_type);
-				
-				changes_made = 0;
-				
-				/* Use iterative approach with slave communication */
-				int iteration = 0;
-				int max_iterations = 10; /* Limit iterations to prevent infinite loops */
-				
-				do {
-					int local_changes = 0;
-					iteration++;
-					
-					printf("Slave %d: Starting iteration %d for grid %d\n", rank, iteration, current_grid_idx);
-					
-					/* Process based on component type using existing parallel solver functions */
-					switch (current_component_type) {
-						case 0: /* Row constraint propagation */
-							printf("Slave %d: Performing row constraint propagation (iteration %d)\n", rank, iteration);
-							for (depth = 1; depth <= max_depth; depth++) {
-								local_changes += parallel_naked_candidates_rows(extended_grid, n, 
-									already_propagated[depth-1], depth, 0, sqrt_n);
+				int max_depth_for_prop = (int)floor((double)n / 2.0); /* Use 2.0 for float division */
+				int ***already_propagated = NULL;
+
+				if (max_depth_for_prop > 0) {
+					already_propagated = (int ***)malloc(max_depth_for_prop * sizeof(int **));
+					if (already_propagated == NULL) {
+						fprintf(stderr, "Slave %d: Failed to allocate already_propagated array.\n", rank);
+						free_extended_grid(slave_extended_grid, n);
+						slave_extended_grid = NULL;
+					} else {
+						for (depth_idx = 0; depth_idx < max_depth_for_prop; depth_idx++) {
+							already_propagated[depth_idx] = (int **)malloc(n * sizeof(int *));
+							if (already_propagated[depth_idx] == NULL) {
+								fprintf(stderr, "Slave %d: Failed to allocate already_propagated[%d] row pointers.\n", rank, depth_idx);
+								for(k=0; k<depth_idx; ++k) {
+									for(l=0; l<n; ++l) free(already_propagated[k][l]);
+										free(already_propagated[k]);
+								}
+								free(already_propagated);
+								already_propagated = NULL;
+								break;
 							}
-							break;
-							
-						case 1: /* Column constraint propagation */
-							printf("Slave %d: Performing column constraint propagation (iteration %d)\n", rank, iteration);
-							for (depth = 1; depth <= max_depth; depth++) {
-								local_changes += parallel_naked_candidates_cols(extended_grid, n, 
-									already_propagated[depth-1], depth, 0, sqrt_n);
+							for (j = 0; j < n; j++) {
+								already_propagated[depth_idx][j] = (int *)calloc(n, sizeof(int));
+								if (already_propagated[depth_idx][j] == NULL) {
+									fprintf(stderr, "Slave %d: Failed to allocate already_propagated[%d][%d] column.\n", rank, depth_idx, j);
+									for(l=0; l<j; ++l) free(already_propagated[depth_idx][l]);
+										free(already_propagated[depth_idx]);
+									for(k=0; k<depth_idx; ++k) {
+										for(l=0; l<n; ++l) free(already_propagated[k][l]);
+										free(already_propagated[k]);
+									}
+									free(already_propagated);
+									already_propagated = NULL;
+									break;
+								}
 							}
-							break;
-							
-						case 2: /* Box constraint propagation */
-							printf("Slave %d: Performing box constraint propagation (iteration %d)\n", rank, iteration);
-							for (depth = 1; depth <= max_depth; depth++) {
-								local_changes += parallel_naked_candidates_boxes(extended_grid, n, 
-									already_propagated[depth-1], depth, 0, sqrt_n);
-							}
-							break;
-							
-						default:
-							printf("Slave %d: Unknown component type %d\n", rank, current_component_type);
-							break;
-					}
-					
-					printf("Slave %d: Made %d local changes in iteration %d\n", rank, local_changes, iteration);
-					changes_made += local_changes;
-					
-					/* Simplified slave communication: just use barriers for synchronization */
-					/* This avoids deadlocks while still allowing some coordination */
-					if (local_changes > 0) {
-						printf("Slave %d: Changes made, continuing to next iteration\n", rank);
-					}
-					
-					/* Stop if no changes or max iterations reached */
-					if (local_changes == 0 || iteration >= max_iterations) {
-						printf("Slave %d: Stopping iterations - local_changes: %d, iteration: %d\n", 
-						       rank, local_changes, iteration);
-						break;
-					}
-					
-				} while (iteration < max_iterations);
-				
-				printf("Slave %d: Constraint propagation completed after %d iterations, total changes: %d\n", 
-				       rank, iteration, changes_made);
-				
-				/* Convert extended grid back to regular grid */
-				for (i = 0; i < n; i++) {
-					for (j = 0; j < n; j++) {
-						struct node *temp = extended_grid[i][j];
-						if (temp != NULL && temp->next == NULL) {
-							slave_grid[i][j] = temp->data; /* Single candidate = solved */
 						}
 					}
 				}
 				
-				/* Clean up */
-				free_extended_grid(extended_grid, n);
-				for (depth_idx = 0; depth_idx < max_depth; depth_idx++) {
-					for (j = 0; j < n; j++) {
-						free(already_propagated[depth_idx][j]);
-					}
-					free(already_propagated[depth_idx]);
+				changes_made = 0;
+				if (slave_extended_grid != NULL && (max_depth_for_prop == 0 || already_propagated != NULL)) {
+					printf("Slave %d: Starting constraint propagation for grid %d, component type %d\n",
+						rank, current_grid_idx, current_component_type);
+
+					int iteration = 0;
+					int max_iterations = 10;
+
+					do {
+						int local_changes = 0;
+						iteration++;
+
+						printf("Slave %d: Starting iteration %d for grid %d\n", rank, iteration, current_grid_idx);
+
+						/* Pass the correct already_propagated depth and range (0 to n for full grid scan) */
+						int **current_already_propagated_matrix = (max_depth_for_prop > 0 && already_propagated) ? already_propagated[0] : NULL;
+
+						switch (current_component_type) {
+						case 0: /* Row constraint propagation */
+							local_changes += parallel_naked_candidates_rows(slave_extended_grid, n, current_already_propagated_matrix, 1, 0, n); /* Using depth 1 as a starting point */
+							break;
+						case 1: /* Column constraint propagation */
+							local_changes += parallel_naked_candidates_cols(slave_extended_grid, n, current_already_propagated_matrix, 1, 0, n); /* Using depth 1 */
+							break;
+						case 2: /* Box constraint propagation */
+							local_changes += parallel_naked_candidates_boxes(slave_extended_grid, n, current_already_propagated_matrix, 1, 0, n); /* Using depth 1 */
+							break;
+						default:
+							printf("Slave %d: Unknown component type %d\n", rank, current_component_type);
+							break;
+						}
+
+                				/* Apply Hidden Singles after Naked Candidates for this iteration */
+                				local_changes += parallel_hidden_singles(slave_extended_grid, n);
+
+						printf("Slave %d: Made %d local changes in iteration %d\n", rank, local_changes, iteration);
+						changes_made += local_changes; /* Sum up changes across iterations for this task */
+
+						if (local_changes == 0 || iteration >= max_iterations) {
+							printf("Slave %d: Stopping iterations - local_changes: %d, iteration: %d\n",
+								rank, local_changes, iteration);
+							break;
+						}
+
+					} while (iteration < max_iterations);
+
+					printf("Slave %d: Constraint propagation completed after %d iterations, total changes: %d\n",
+						rank, iteration, changes_made);
 				}
-				free(already_propagated);
-			}
-			
+
+				if (already_propagated) {
+					for (depth_idx = 0; depth_idx < max_depth_for_prop; depth_idx++) {
+						if (already_propagated[depth_idx]) {
+							for (j = 0; j < n; j++) {
+								if (already_propagated[depth_idx][j]) free(already_propagated[depth_idx][j]);
+							}
+							free(already_propagated[depth_idx]);
+						}
+					}
+					free(already_propagated);
+				}
+			} /* End of slave_extended_grid processing block */
+
 			if (changes_made > 0) {
-				printf("Slave %d: Made %d changes to grid %d (component type %d)\n", 
-				       rank, changes_made, current_grid_idx, current_component_type);
+				printf("Slave %d: Made %d changes to grid %d (component type %d)\n",
+				rank, changes_made, current_grid_idx, current_component_type);
 			} else {
-				printf("Slave %d: No changes made to grid %d (component type %d)\n", 
-				       rank, current_grid_idx, current_component_type);
+				printf("Slave %d: No changes made to grid %d (component type %d)\n",
+				rank, current_grid_idx, current_component_type);
 			}
-			
-			/* Send results back to master */
+
+			/* Convert slave's updated extended grid (linked lists) to bitmasks for sending back */
+			int** slave_bitmask_grid_to_send = convert_extended_to_bitmask_grid(slave_extended_grid, n);
+			if (!slave_bitmask_grid_to_send) {
+				fprintf(stderr, "Slave %d: Failed to convert extended grid to bitmask for sending. Sending empty grid.\n", rank);
+				changes_made = 0; /* Force no changes flag */
+				slave_bitmask_grid_to_send = create_grid(n); /* Send an empty grid to avoid crash */
+				if (!slave_bitmask_grid_to_send) {
+					MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+				}
+			}
+
 			MPI_Send(&current_grid_idx, 1, MPI_INT, 0, 10, MPI_COMM_WORLD);
 			MPI_Send(&current_component_type, 1, MPI_INT, 0, 11, MPI_COMM_WORLD);
 			MPI_Send(&current_slave_ordinal, 1, MPI_INT, 0, 12, MPI_COMM_WORLD);
 			
-			/* Send whether changes were made */
-			int changes_flag = changes_made ? 1 : 0;
-			MPI_Send(&changes_flag, 1, MPI_INT, 0, 13, MPI_COMM_WORLD);
-			
-			/* Send the processed grid back */
+			/* Now send the actual count of changes made by the slave's propagation */
+			MPI_Send(&changes_made, 1, MPI_INT, 0, 13, MPI_COMM_WORLD);
+
 			for (i = 0; i < n; i++) {
-				MPI_Send(slave_grid[i], n, MPI_INT, 0, 14 + i, MPI_COMM_WORLD);
+				MPI_Send(slave_bitmask_grid_to_send[i], n, MPI_INT, 0, 14 + i, MPI_COMM_WORLD);
 			}
-			
-			/* Wait for next assignment or termination */
+			free_grid(slave_bitmask_grid_to_send, n);
+
+			printf("Slave %d: Sent results for grid %d back to master.\n", rank, current_grid_idx);
+
 			MPI_Recv(&current_grid_idx, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
 		}
-		
-		/* Clean up */
-		if (slave_grid != NULL) {
-			free_grid(slave_grid, n);
+
+		printf("Slave %d: Received termination signal or no more work. Shutting down.\n", rank);
+		if (slave_extended_grid) {
+			free_extended_grid(slave_extended_grid, n);
 		}
-		
+		if (temp_received_bitmask_grid) {
+			free_grid(temp_received_bitmask_grid, n);
+		}
 		printf("Slave %d: Terminating\n", rank);
 	}
 
 	MPI_Finalize();
 	return 0;
 }
-
-	
-

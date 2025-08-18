@@ -1,166 +1,233 @@
 #include <math.h>
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-	#include "../../include/debug.h"
-	#include "../../include/linked_list.h"
-	#include "../../include/solver.h"
-	#include "../../include/solver_parallel.h"
-	#include "../../include/sudoku_utils.h"
+#include "../../include/debug.h"
+#include "../../include/linked_list.h"
+#include "../../include/solver.h"
+#include "../../include/solver_parallel.h"
+#include "../../include/sudoku_utils.h"
 
-int parallel_sudoku_solver(int **grid, int n, int rank, int size)
-{
-	int i, j; /* Loop variables */
-	int is_changed; /* Flag to check if any changes are made */
-	int depth;
-	int max_depth;
-	int numbers_left;
-	struct node ***extended_grid; /* Extended grid for constraint propagation */
-
-	int ***already_propagated_rows;
-	int ***already_propagated_columns;
-	int ***already_propagated_boxes;
-	int **selected_propagated;
-
-	int sqrt_n;
-	int start, end;
-	int global_is_changed;
-
-	sqrt_n = (int)sqrt(n);
-	start = (rank % sqrt_n) * sqrt_n;
-	end = start + sqrt_n;
-
-	DPRINTF("I am process %d. Starting row/col: %d. Ending row/col: %d\n\n", rank, start, end - 1);
-
-	/* TODO: Add checks for errors */
-	max_depth = (int)floor((double)n / 2);
-	DPRINTF("Max depth: %d\n\n", max_depth);
-	already_propagated_rows = (int ***)malloc(max_depth * sizeof(int **));
-	for (i = 0; i < max_depth; ++i) {
-		already_propagated_rows[i] = (int **)malloc(n * sizeof(int *));
-		for (j = 0; j < n; ++j)
-			already_propagated_rows[i][j] = (int *)malloc(n * sizeof(int));
-		
-		initialize_propagation_matrix(already_propagated_rows[i], n);
-	}
-
-	already_propagated_columns = (int ***)malloc(max_depth * sizeof(int **));
-	for (i = 0; i < max_depth; ++i) {
-		already_propagated_columns[i] = (int **)malloc(n * sizeof(int *));
-		for (j = 0; j < n; ++j)
-			already_propagated_columns[i][j] = (int *)malloc(n * sizeof(int));
-		
-		initialize_propagation_matrix(already_propagated_columns[i], n);
-	}
-
-	already_propagated_boxes = (int ***)malloc(max_depth * sizeof(int **));
-	for (i = 0; i < max_depth; ++i) {
-		already_propagated_boxes[i] = (int **)malloc(n * sizeof(int *));
-		for (j = 0; j < n; ++j)
-			already_propagated_boxes[i][j] = (int *)malloc(n * sizeof(int));
-		
-		initialize_propagation_matrix(already_propagated_boxes[i], n);
-	}
-
-	/* Create an extended grid */
-	extended_grid = extend_grid(grid, n);
-	if (extended_grid == NULL) {
-		fprintf(stderr, "Error: Unable to create extended grid\n");
-		return -1;
-	}
-
-	/* Print the extended grid */
-	DPRINTF("\nExtended grid:\n");
-	DPRINT_EXTENDED_GRID(extended_grid, n);	
-
-	/* Solve the Sudoku puzzle using constraint propagation */
-	do {
-		is_changed = 0; /* Reset the flag for each iteration */
-
-		/* Use the technique of naked candidates */
-		for (depth = 1; depth <= max_depth; ++depth) {
-			selected_propagated = already_propagated_rows[depth - 1];
-			is_changed += parallel_naked_candidates_rows(extended_grid,
-				n, selected_propagated, depth,
-				start, end);
-			
-			DPRINTF("\n\nPropagation at depth (row): %d\n", depth);
-			DPRINT_EXTENDED_GRID(extended_grid, n);
-			DPRINTF("\n\n\n");
-
-			selected_propagated = already_propagated_columns[depth - 1];
-			is_changed += parallel_naked_candidates_cols(extended_grid,
-				n, selected_propagated, depth,
-				start, end);
-		
-			DPRINTF("\n\nPropagation at depth (col): %d\n", depth);
-			DPRINT_EXTENDED_GRID(extended_grid, n);
-			DPRINTF("\n\n\n");
-			
-			selected_propagated = already_propagated_boxes[depth - 1];
-			is_changed += parallel_naked_candidates_boxes(extended_grid,
-				n, selected_propagated, depth,
-				start, end);
-			
-			DPRINTF("\n\nPropagation at depth (box): %d\n", depth);
-			DPRINT_EXTENDED_GRID(extended_grid, n);
-			DPRINTF("\n\n\n");
+/* Helper function: Checks if a value exists in a linked list. */
+int has_value(struct node *head, int value) {
+	struct node *current; 
+	current = head;
+	while (current != NULL) {
+		if (current->data == value) {
+			return 1; /* Value found */
 		}
+		current = current->next;
+	}
+	return 0; /* Value not found */
+}
 
-		/* Use technique of hidden singles */
-		/*DPRINTF("\n\nHidden singles...\n");
-		is_changed += hidden_singles(extended_grid, n);*/
-
-		/* Print the updated extended grid */
-		/*DPRINTF("\nUpdated extended grid:\n");
-		DPRINT_EXTENDED_GRID(extended_grid, n);
-		DPRINTF("\n\n\n");*/
-
-		MPI_Barrier(MPI_COMM_WORLD);
-
-		MPI_Allreduce(&is_changed, &global_is_changed, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-        	is_changed = global_is_changed;
-
-		communication(extended_grid, n, rank, size);
-	} while (is_changed);
-
-	/* Count numbers left for progress */
-	numbers_left = 0;
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n; j++) {
-			struct node *temp = extended_grid[i][j];
-			while (temp != NULL) {
-				numbers_left++;
-				temp = temp->next;
-			}
+int is_coord_in_tuple(int r, int c, struct coordinates *coord, int n_coordinates) {
+	int i; 
+	for (i = 0; i < n_coordinates; ++i) {
+		if (coord[i].row == r && coord[i].column == c) {
+			return 1;
 		}
 	}
-	DPRINTF("Numbers left in the extended grid: %d\n", numbers_left);
-	DPRINTF("Progress: %2.1f%%\n",
-	       (double)((double)1 - (double)(numbers_left - n * n) /
-					    (double)((n * n * n) - (n * n))) *
-		       100);
-
-	/* Fill the original grid with single values */
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n; j++) {
-			struct node *temp = extended_grid[i][j];
-
-			if (temp->next == NULL)
-				grid[i][j] = temp->data;
-		}
-	}
-
-	/* Free the extended grid */
-	free_extended_grid(extended_grid, n);
-	free_propagation_matrix(already_propagated_rows, n);
-	free_propagation_matrix(already_propagated_columns, n);
-	free_propagation_matrix(already_propagated_boxes, n);
-
 	return 0;
 }
 
+int parallel_propagate_row(struct node ***extended_grid, int n, struct coordinates *coord, int n_coordinates, int value_to_propagate) {
+	int changes;
+	int j;
+	int target_row;
+	struct node* original_head;
+	int original_size;
+
+	changes = 0; /* Initialize count of changes made */
+	target_row = coord[0].row;
+
+	for (j = 0; j < n; ++j) {
+		if (!is_coord_in_tuple(target_row, j, coord, n_coordinates)) {
+			original_head = extended_grid[target_row][j];
+			original_size = size_list(original_head);
+
+			extended_grid[target_row][j] = delete_at_given_value(original_head, value_to_propagate);
+			
+			if (size_list(extended_grid[target_row][j]) < original_size) {
+				changes++;
+			}
+		}
+	}
+	return changes;
+}
+
+int parallel_propagate_column(struct node ***extended_grid, int n, struct coordinates *coord, int n_coordinates, int value_to_propagate) {
+	int changes; 
+	int i;       
+	int target_col;
+	struct node* original_head;
+	int original_size;
+
+	changes = 0;
+	target_col = coord[0].column;
+
+	for (i = 0; i < n; ++i) {
+		if (!is_coord_in_tuple(i, target_col, coord, n_coordinates)) {
+			original_head = extended_grid[i][target_col];
+			original_size = size_list(original_head);
+
+			extended_grid[i][target_col] = delete_at_given_value(original_head, value_to_propagate);
+			
+			if (size_list(extended_grid[i][target_col]) < original_size) {
+				changes++;
+			}
+		}
+	}
+	return changes;
+}
+
+
+int parallel_propagate_box(struct node ***extended_grid, int n, struct coordinates *coord, int n_coordinates, int value_to_propagate) {
+	int changes;
+	int r, c;
+	int sqrt_n;
+	int box_start_row;
+	int box_start_col;
+	struct node* original_head;
+	int original_size;
+
+	changes = 0;
+	sqrt_n = (int)sqrt(n);
+	box_start_row = (coord[0].row / sqrt_n) * sqrt_n;
+	box_start_col = (coord[0].column / sqrt_n) * sqrt_n;
+
+	for (r = box_start_row; r < box_start_row + sqrt_n; ++r) {
+		for (c = box_start_col; c < box_start_col + sqrt_n; ++c) {
+			if (!is_coord_in_tuple(r, c, coord, n_coordinates)) {
+				original_head = extended_grid[r][c];
+				original_size = size_list(original_head);
+
+				extended_grid[r][c] = delete_at_given_value(original_head, value_to_propagate);
+				
+				if (size_list(extended_grid[r][c]) < original_size) {
+					changes++;
+				}
+			}
+		}
+	}
+	return changes;
+}
+
+
+int parallel_hidden_singles(struct node ***extended_grid, int n) {
+	int total_changes;
+	int value_to_find;
+	int r, c;
+	int found_count;
+	int last_found_r, last_found_c;
+	int sqrt_n;
+	int box_start_row, box_start_col;
+	int box_r, box_c; /* For iterating within a box */
+	struct node* current_cell_candidates; /* Temporary pointer for cell's candidates */
+	int original_size_of_cell;
+
+	total_changes = 0;
+	sqrt_n = (int)sqrt(n);
+
+	DPRINTF("\nApplying Hidden Singles technique...\n");
+
+	for (value_to_find = 1; value_to_find <= n; ++value_to_find) {
+
+		/* --- Check for Hidden Singles in Rows --- */
+		for (r = 0; r < n; ++r) {
+			found_count = 0;
+			last_found_r = -1;
+			last_found_c = -1;
+			for (c = 0; c < n; ++c) {
+				current_cell_candidates = extended_grid[r][c];
+				if (current_cell_candidates != NULL && has_value(current_cell_candidates, value_to_find)) {
+					found_count++;
+					last_found_r = r;
+					last_found_c = c;
+				}
+			}
+
+			if (found_count == 1) {
+				if (size_list(extended_grid[last_found_r][last_found_c]) > 1) {
+					DPRINTF("Hidden Single (Row): Value %d found only in [%d][%d]. Eliminating other candidates.\n",
+						value_to_find, last_found_r + 1, last_found_c + 1);
+					
+					original_size_of_cell = size_list(extended_grid[last_found_r][last_found_c]);
+					free_list(extended_grid[last_found_r][last_found_c]);
+					extended_grid[last_found_r][last_found_c] = create_node(value_to_find);
+					
+					total_changes += (original_size_of_cell - 1);
+				}
+			}
+		}
+
+		/* --- Check for Hidden Singles in Columns --- */
+		for (c = 0; c < n; ++c) {
+			found_count = 0;
+			last_found_r = -1;
+			last_found_c = -1;
+
+			for (r = 0; r < n; ++r) {
+				current_cell_candidates = extended_grid[r][c];
+				if (current_cell_candidates != NULL && has_value(current_cell_candidates, value_to_find)) {
+				found_count++;
+				last_found_r = r;
+				last_found_c = c;
+				}
+			}
+
+			if (found_count == 1) {
+				if (size_list(extended_grid[last_found_r][last_found_c]) > 1) {
+					DPRINTF("Hidden Single (Column): Value %d found only in [%d][%d]. Eliminating other candidates.\n",
+						value_to_find, last_found_r + 1, last_found_c + 1);
+					
+					original_size_of_cell = size_list(extended_grid[last_found_r][last_found_c]);
+					free_list(extended_grid[last_found_r][last_found_c]);
+					extended_grid[last_found_r][last_found_c] = create_node(value_to_find);
+					
+					total_changes += (original_size_of_cell - 1);
+				}
+			}
+		}
+
+		/* --- Check for Hidden Singles in Boxes --- */
+		for (box_r = 0; box_r < sqrt_n; ++box_r) {
+			for (box_c = 0; box_c < sqrt_n; ++box_c) {
+				found_count = 0;
+				last_found_r = -1;
+				last_found_c = -1;
+
+				box_start_row = box_r * sqrt_n;
+				box_start_col = box_c * sqrt_n;
+
+				for (r = box_start_row; r < box_start_row + sqrt_n; ++r) {
+					for (c = box_start_col; c < box_start_col + sqrt_n; ++c) {
+						current_cell_candidates = extended_grid[r][c];
+						if (current_cell_candidates != NULL && has_value(current_cell_candidates, value_to_find)) {
+							found_count++;
+							last_found_r = r;
+							last_found_c = c;
+						}
+					}
+				}
+
+				if (found_count == 1) {
+					if (size_list(extended_grid[last_found_r][last_found_c]) > 1) {
+						DPRINTF("Hidden Single (Box): Value %d found only in [%d][%d]. Eliminating other candidates.\n",
+							value_to_find, last_found_r + 1, last_found_c + 1);
+						
+						original_size_of_cell = size_list(extended_grid[last_found_r][last_found_c]);
+						free_list(extended_grid[last_found_r][last_found_c]);
+						extended_grid[last_found_r][last_found_c] = create_node(value_to_find);
+						
+						total_changes += (original_size_of_cell - 1);
+					}
+				}
+			}
+		}
+	}
+	return total_changes;
+}
 
 int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 			  int **already_propagated, int depth,
@@ -285,7 +352,7 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 					/* Propagate each value in the candidates list */
 					temp2 = candidates;
 					while (temp2 != NULL) {
-						propagate_row(
+						parallel_propagate_row(
 							extended_grid, n, coord, depth,
 							temp2->data); /* Pass 'depth' as n_coordinates */
 						temp2 = temp2->next;
@@ -443,7 +510,7 @@ int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
 					/* Propagate each value in the candidates list */
 					temp2 = candidates;
 					while (temp2 != NULL) {
-						propagate_column(
+						parallel_propagate_column(
 							extended_grid, n, coord, depth,
 							temp2->data); /* Pass 'depth' as n_coordinates */
 						temp2 = temp2->next;
@@ -624,7 +691,7 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 							/* Propagate each value in the candidates list */
 							temp2 = candidates;
 							while (temp2 != NULL) {
-								propagate_box(
+								parallel_propagate_box(
 									extended_grid, n, coord, depth,
 									temp2->data); /* Pass 'depth' as n_coordinates */
 								temp2 = temp2->next;
@@ -661,175 +728,3 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 	return changed;
 }
 
-void communication(struct node ***extended_grid, int n, int rank, int size)
-{
-	int i, j;
-
-	/* Variables for MPI processing of EACH list in 'row' */
-	int local_list_size;
-	int *local_list_data;
-	struct node *current_node_in_original_list; /* Iterator for the original list row[list_idx] */
-	int *all_sizes;
-	int *displacements;
-	int total_flat_size;
-	int *all_lists_flat_data;
-	struct node *new_filtered_list_head; /* Head of the new filtered list for row[list_idx] */
-	int data_to_check;
-	int present_in_all_others; /* Using int for boolean: 1 for true, 0 for false */
-	int other_rank_idx;
-	int found_in_this_other_list; /* Using int for boolean */
-	int other_list_start_idx;
-	int other_list_current_size;
-	int k; /* Loop counter for iterating through other lists' data */
-
-
-	for (i = 0; i < n; ++i) {
-		for (j = 0; j < n; ++j) {
-			/* Reset variables for the current list row[list_idx] */
-			local_list_data = NULL;
-			all_sizes = NULL;
-			displacements = NULL;
-			all_lists_flat_data = NULL;
-			new_filtered_list_head = NULL;
-			total_flat_size = 0;
-			current_node_in_original_list = extended_grid[i][j];
-
-			/* 1. Serialize local list (row[list_idx]) into an array */
-			local_list_size = size_list(current_node_in_original_list);
-			if (local_list_size > 0) {
-				local_list_data =
-					(int *)malloc(local_list_size * sizeof(int));
-				if (local_list_data == NULL) {
-					fprintf(stderr,
-						"Process %d: Failed to allocate memory for local_list_data (list [%d][%d])\n",
-						rank, i, j);
-					MPI_Abort(MPI_COMM_WORLD, 1);
-				}
-				/* Populate local_list_data from current_node_in_original_list (which is row[list_idx]) */
-				struct node *temp_iter = current_node_in_original_list;
-				for (k = 0; k < local_list_size; k++) {
-					local_list_data[k] = temp_iter->data;
-					temp_iter = temp_iter->next;
-				}
-			}
-
-			/* 2. Gather all list sizes (for current row[list_idx] across processes) */
-			all_sizes = (int *)malloc(size * sizeof(int));
-			if (all_sizes == NULL) {
-				fprintf(stderr,
-					"Process %d: Failed to allocate memory for all_sizes (list [%d][%d])\n",
-					rank, i, j);
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
-			MPI_Allgather(&local_list_size, 1, MPI_INT, all_sizes, 1,
-				MPI_INT, MPI_COMM_WORLD);
-
-			/* 3. Prepare for Allgatherv: calculate displacements and total size */
-			displacements = (int *)malloc(size * sizeof(int));
-			if (displacements == NULL) {
-				fprintf(stderr,
-					"Process %d: Failed to allocate memory for displacements (list [%d][%d])\n",
-					rank, i, j);
-				MPI_Abort(MPI_COMM_WORLD, 1);
-			}
-
-			total_flat_size = 0;
-			for (k = 0; k < size; k++) {
-				total_flat_size += all_sizes[k];
-			}
-			if (size > 0) {
-				displacements[0] = 0;
-				for (k = 1; k < size; k++) {
-					displacements[k] =
-						displacements[k - 1] + all_sizes[k - 1];
-				}
-			}
-
-			if (total_flat_size > 0) {
-				all_lists_flat_data =
-					(int *)malloc(total_flat_size * sizeof(int));
-				if (all_lists_flat_data == NULL) {
-					fprintf(stderr,
-						"Process %d: Failed to allocate memory for all_lists_flat_data (list [%d][%d])\n",
-						rank, i, j);
-					MPI_Abort(MPI_COMM_WORLD, 1);
-				}
-			}
-
-			/* 4. Gather all list data (for current row[list_idx] across processes) */
-			if (total_flat_size > 0) {
-				MPI_Allgatherv(local_list_data ? local_list_data :
-								MPI_BOTTOM,
-					local_list_size, MPI_INT,
-					all_lists_flat_data, all_sizes,
-					displacements, MPI_INT, MPI_COMM_WORLD);
-			}
-
-			/* 5. Identify elements to keep and build the new list (for current row[list_idx]) */
-			/* current_node_in_original_list is already pointing to row[list_idx] */
-			while (current_node_in_original_list != NULL) {
-				data_to_check = current_node_in_original_list->data;
-				present_in_all_others = 1; /* Assume true */
-
-				if (size > 1) {
-					for (other_rank_idx = 0; other_rank_idx < size;
-					other_rank_idx++) {
-						if (other_rank_idx == rank) {
-							continue;
-						}
-
-						found_in_this_other_list = 0;
-						other_list_current_size =
-							all_sizes[other_rank_idx];
-
-						if (other_list_current_size > 0 &&
-						all_lists_flat_data != NULL) {
-							other_list_start_idx =
-								displacements
-									[other_rank_idx];
-							for (k = 0;
-							k <
-							other_list_current_size;
-							k++) {
-								if (all_lists_flat_data
-									[other_list_start_idx +
-									k] ==
-								data_to_check) {
-									found_in_this_other_list =
-										1;
-									break;
-								}
-							}
-						} /* If other_list_current_size is 0, found_in_this_other_list remains 0 */
-
-						if (!found_in_this_other_list) {
-							present_in_all_others = 0;
-							break;
-						}
-					}
-				} /* If size == 1, present_in_all_others remains 1, all elements kept */
-
-				if (present_in_all_others) {
-					new_filtered_list_head = append(
-						new_filtered_list_head, data_to_check);
-				}
-				current_node_in_original_list =
-					current_node_in_original_list->next;
-			}
-
-			/* 6. Replace old list (row[list_idx]) with the new list */
-			free_list(extended_grid[i][j]);
-			extended_grid[i][j] = new_filtered_list_head;
-
-			/* 7. Free allocated MPI-related memory for this iteration */
-			if (local_list_data != NULL) {
-				free(local_list_data);
-			}
-			free(all_sizes); /* all_sizes is always allocated if size > 0 */
-			free(displacements); /* displacements is always allocated if size > 0 */
-			if (all_lists_flat_data != NULL) {
-				free(all_lists_flat_data);
-			}
-		}
-	}
-}

@@ -60,10 +60,6 @@ struct node *add_new_candidates(struct node *candidates, struct node *new);
  */
 void print_list(struct node *head);
 
-/*
-int get_head_value(struct node *head);
-*/
-
 /**
  * Frees the memory allocated for the linked list.
  *

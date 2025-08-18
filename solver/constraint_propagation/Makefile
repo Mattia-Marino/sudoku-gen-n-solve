@@ -24,12 +24,14 @@ PARALLEL_DIR := parallel
 SERIAL_OBJS := $(BUILD_DIR)/$(SERIAL_DIR)/main.o \
     $(BUILD_DIR)/sudoku_utils.o \
     $(BUILD_DIR)/linked_list.o \
+    $(BUILD_DIR)/bitmask_utils.o \
     $(BUILD_DIR)/$(SERIAL_DIR)/solver.o
 
 # Parallel objects
 PARALLEL_OBJS := $(BUILD_DIR)/$(PARALLEL_DIR)/main.o \
     $(BUILD_DIR)/sudoku_utils.o \
     $(BUILD_DIR)/linked_list.o \
+    $(BUILD_DIR)/bitmask_utils.o \
     $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
     $(BUILD_DIR)/$(PARALLEL_DIR)/solver.o
 

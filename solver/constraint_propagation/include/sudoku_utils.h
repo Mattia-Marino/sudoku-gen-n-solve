@@ -11,6 +11,7 @@ typedef struct {
     int count;          /* Number of grids */
     int n;              /* Size of each grid (n x n) */
     int capacity;       /* Current capacity of the grids array */
+    struct node ****extended_grids; /* Array of extended grid pointers */
 } sudoku_collection_t;
 
 /**
@@ -96,5 +97,24 @@ void free_sudoku_collection(sudoku_collection_t *collection);
  * @returns Pointer to the grid, or NULL if index is invalid
  */
 int **get_grid_from_collection(sudoku_collection_t *collection, int index);
+
+/**
+ * Gets the extended version of a specific grid from the collection.
+ *
+ * @param collection The sudoku collection
+ * @param index The index of the grid to retrieve
+ * @returns the extended grid in the form of a matrix
+ */
+struct node ***get_extended_grid_from_collection(sudoku_collection_t *collection, int index);
+
+
+/**
+ * Converts an extended grid (with candidate lists) back to the original grid.
+ *
+ * @param extended_grid The extended grid with candidate lists
+ * @param n The size of the grid
+ * @returns Pointer to the original grid, or NULL if conversion fails
+ */
+int **convert_extended_to_original_grid(struct node ***extended_grid, int n);
 
 #endif /* SUDOKU_UTILS_H */
