@@ -107,6 +107,14 @@ int **get_grid_from_collection(sudoku_collection_t *collection, int index);
  */
 struct node ***get_extended_grid_from_collection(sudoku_collection_t *collection, int index);
 
+/**
+ * Sets the extended version of a specific grid in the collection.
+ *
+ * @param collection The sudoku collection
+ * @param index The index of the grid to set
+ * @param extended_grid The extended grid to set
+ */
+void set_extended_grid_in_collection(sudoku_collection_t *collection, int index, struct node ***extended_grid);
 
 /**
  * Converts an extended grid (with candidate lists) back to the original grid.

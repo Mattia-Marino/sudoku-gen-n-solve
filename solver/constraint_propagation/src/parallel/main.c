@@ -34,7 +34,7 @@ int try_assign_sudoku_task_to_slave(int slave_rank, sudoku_collection_t *collect
 				     int *grid_is_completed, /* size collection->count */
 				     int K_slaves_per_grid)
 {
-	int i; /* Loop variable */
+	int i, j; /* Loop variable */
 	int grid_to_send = -1;
 	int slave_ordinal_for_grid;
 	int component_type; /* 0=rows, 1=columns, 2=boxes */
@@ -69,12 +69,27 @@ int try_assign_sudoku_task_to_slave(int slave_rank, sudoku_collection_t *collect
 		MPI_Send(&component_type, 1, MPI_INT, slave_rank, 1, MPI_COMM_WORLD);
 		MPI_Send(&slave_ordinal_for_grid, 1, MPI_INT, slave_rank, 2, MPI_COMM_WORLD);
 		
-		/* Send the actual grid */
-		int **grid = get_grid_from_collection(collection, grid_to_send);
-		if (grid != NULL) {
+		/* Send the actual grid to slave — as BITMASK grid */
+		struct node ***ext = get_extended_grid_from_collection(collection, grid_to_send);
+		if (!ext) {
+			int **int_grid = get_grid_from_collection(collection, grid_to_send);
+			ext = extend_grid_with_candidates(int_grid, n);
+			set_extended_grid_in_collection(collection, grid_to_send, ext);
+		}
+		int **bitmask_to_send = convert_extended_to_bitmask_grid(ext, n);
+		if (bitmask_to_send != NULL) {
 			for (i = 0; i < n; i++) {
-				MPI_Send(grid[i], n, MPI_INT, slave_rank, 3 + i, MPI_COMM_WORLD);
+				MPI_Send(bitmask_to_send[i], n, MPI_INT, slave_rank, 3 + i, MPI_COMM_WORLD);
 			}
+			free_grid(bitmask_to_send, n);
+		} else {
+			/* Fallback: send an all-candidates grid if conversion failed */
+			int **fallback = create_grid(n);
+			for (i = 0; i < n; ++i) {
+				for (j = 0; j < n; ++j) fallback[i][j] = (1 << n) - 1;
+					MPI_Send(fallback[i], n, MPI_INT, slave_rank, 3 + i, MPI_COMM_WORLD);
+			}
+			free_grid(fallback, n);
 		}
 		
 		/* Update count AFTER calculating component type */
@@ -105,7 +120,7 @@ int int_log2(int x) {
 int main(int argc, char **argv)
 {
 	char *filename;
-	int i, j, k, l, r, c; /* Loop variables */
+	int i, j, k, l, r, c, rr; /* Loop variables */
 	int n = 0;
 	int sqrt_n;
 	int tot_solved = 0;
@@ -204,6 +219,7 @@ int main(int argc, char **argv)
 			int **temp_received_bitmask_grid = NULL;
 
 
+			/* Check if allocation was successful */
 			if (slaves_assigned_to_grid_count == NULL || grid_is_completed == NULL || grid_components_completed == NULL) {
 				fprintf(stderr, "Master: Failed to allocate tracking arrays.\n");
 				if (slaves_assigned_to_grid_count) free(slaves_assigned_to_grid_count);
@@ -216,6 +232,7 @@ int main(int argc, char **argv)
 				return EXIT_FAILURE;
 			}
 
+			/* Initialize component tracking arrays */
 			for (i = 0; i < collection->count; i++) {
 				grid_components_completed[i] = (int *)calloc(K_SLAVES_PER_GRID, sizeof(int));
 				if (grid_components_completed[i] == NULL) {
@@ -229,6 +246,7 @@ int main(int argc, char **argv)
 				}
 			}
 
+			/* Initiliaze bitmask grid */
 			temp_received_bitmask_grid = create_grid(n);
 			if (temp_received_bitmask_grid == NULL) {
 				fprintf(stderr, "Master: Failed to allocate temp_received_bitmask_grid.\n");
@@ -242,6 +260,7 @@ int main(int argc, char **argv)
 
 			printf("Master: Starting parallel processing with %d slaves\n", num_slaves);
 
+			/* Assign work to slaves */
 			int slaves_given_work = 0;
 			for (s_rank = 1; s_rank <= num_slaves; ++s_rank) {
 					int assigned = try_assign_sudoku_task_to_slave(
@@ -408,6 +427,8 @@ int main(int argc, char **argv)
 				}
 				}
 				DPRINT_SUDOKU(final_int_grid_for_print, n);
+				printf("Here the final grid:\n");
+				display_sudoku(final_int_grid_for_print, n);
 				free_grid(final_int_grid_for_print, n);
 			} else {
 				printf("Master: Grid %d - NOT SOLVED\n", i);
@@ -423,6 +444,8 @@ int main(int argc, char **argv)
 					}
 				}
 				DPRINT_SUDOKU(partial_int_grid_for_print, n);
+				printf("Here's the partial result:\n");
+				display_sudoku(partial_int_grid_for_print, n);
 				free_grid(partial_int_grid_for_print, n);
 			}
 		}
@@ -537,6 +560,13 @@ int main(int argc, char **argv)
 
 						/* Pass the correct already_propagated depth and range (0 to n for full grid scan) */
 						int **current_already_propagated_matrix = (max_depth_for_prop > 0 && already_propagated) ? already_propagated[0] : NULL;
+
+						/* Each iteration, we reset the already_propagated matrix */
+						if (current_already_propagated_matrix) {
+								for (rr = 0; rr < n; ++rr) {
+									memset(current_already_propagated_matrix[rr], 0, n * sizeof(int));
+								}
+							}
 
 						switch (current_component_type) {
 						case 0: /* Row constraint propagation */

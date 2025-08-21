@@ -278,3 +278,8 @@ struct node ***get_extended_grid_from_collection(sudoku_collection_t *collection
 	}
 	return collection->extended_grids[index];
 }
+
+void set_extended_grid_in_collection(sudoku_collection_t *collection, int index, struct node ***extended_grid)
+{
+	collection->extended_grids[index] = extended_grid;
+}

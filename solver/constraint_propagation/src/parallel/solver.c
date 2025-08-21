@@ -237,7 +237,7 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 	int k; /* Temp loop variable to continue to search for matches */
 	int l; /* Loop variable to save the coordinates */
 	int remaining_nodes;
-	int changed;
+	int eliminations;
 	int n_difference;
 	struct node *candidates;
 	struct node *temp;
@@ -254,7 +254,7 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 		return -1; /* Indicate error */
 	}
 
-	changed = 0; /* Set changed to 0, since nothing changed yet */
+	eliminations = 0; /* Set eliminations to 0, since nothing changed yet */
 
 	/* Explore extended grid row-wise */
 	for (i = start_row; i < end_row; ++i) {
@@ -352,7 +352,7 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 					/* Propagate each value in the candidates list */
 					temp2 = candidates;
 					while (temp2 != NULL) {
-						parallel_propagate_row(
+						eliminations += parallel_propagate_row(
 							extended_grid, n, coord, depth,
 							temp2->data); /* Pass 'depth' as n_coordinates */
 						temp2 = temp2->next;
@@ -361,9 +361,7 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 					/* Mark involved cells as propagated */
 					for (l = 0; l < depth; ++l) {
 						already_propagated[coord[l].row][coord[l].column] = 1;
-					}
-					changed = 1; /* Signal that at least a change occurred */
-	
+					}	
 					DPRINTF("\nPropagation complete.\n\n");
 				} else {
 					/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
@@ -384,7 +382,7 @@ int parallel_naked_candidates_rows(struct node ***extended_grid, int n,
 	free(coord);
 	DPRINTF("\n");
 
-	return changed;
+	return eliminations;
 }
 
 int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
@@ -395,7 +393,7 @@ int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
 	int k; /* Temp loop variable to continue to search for matches */
 	int l; /* Loop variable to save the coordinates */
 	int remaining_nodes;
-	int changed;
+	int eliminations;
 	int n_difference;
 	struct node *candidates;
 	struct node *temp;
@@ -412,7 +410,7 @@ int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
 		return -1; /* Indicate error */
 	}
 
-	changed = 0; /* Set changed to 0, since nothing changed yet */
+	eliminations = 0; /* Set eliminations to 0, since nothing changed yet */
 
 	/* Explore extended grid column-wise */
 	for (j = start_col; j < end_col; ++j) {
@@ -510,7 +508,7 @@ int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
 					/* Propagate each value in the candidates list */
 					temp2 = candidates;
 					while (temp2 != NULL) {
-						parallel_propagate_column(
+						eliminations += parallel_propagate_column(
 							extended_grid, n, coord, depth,
 							temp2->data); /* Pass 'depth' as n_coordinates */
 						temp2 = temp2->next;
@@ -520,7 +518,6 @@ int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
 					for (l = 0; l < depth; ++l) {
 						already_propagated[coord[l].row][coord[l].column] = 1;
 					}
-					changed = 1; /* Signal that at least a change occurred */
 	
 					DPRINTF("\nPropagation complete.\n\n");
 				} else {
@@ -542,7 +539,7 @@ int parallel_naked_candidates_cols(struct node ***extended_grid, int n,
 	free(coord);
 	DPRINTF("\n");
 
-	return changed;
+	return eliminations;
 }
 
 int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
@@ -553,7 +550,7 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 	int k, m; /* Temp loop variable to continue to search for matches */
 	int l; /* Loop variable to save the coordinates */
 	int remaining_nodes;
-	int changed;
+	int eliminations;
 	int n_difference;
 	struct node *candidates;
 	struct node *temp;
@@ -576,7 +573,7 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 	}
 
 	sqrt_n = (int)sqrt(n);
-	changed = 0; /* Set changed to 0, since nothing changed yet */
+	eliminations = 0; /* Set eliminations to 0, since nothing changed yet */
 
 	for (box_row = start_row / sqrt_n; box_row < end_row / sqrt_n; ++box_row) {
 		for (box_col = 0; box_col < sqrt_n; ++box_col) {
@@ -691,7 +688,7 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 							/* Propagate each value in the candidates list */
 							temp2 = candidates;
 							while (temp2 != NULL) {
-								parallel_propagate_box(
+								eliminations += parallel_propagate_box(
 									extended_grid, n, coord, depth,
 									temp2->data); /* Pass 'depth' as n_coordinates */
 								temp2 = temp2->next;
@@ -701,8 +698,6 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 							for (l = 0; l < depth; ++l) {
 								already_propagated[coord[l].row][coord[l].column] = 1;
 							}
-							changed = 1; /* Signal that at least a change occurred */
-			
 							DPRINTF("\nPropagation complete.\n\n");
 						} else {
 							/* If we didn't find enough matching nodes, this wasn't a valid tuple. */
@@ -725,6 +720,6 @@ int parallel_naked_candidates_boxes(struct node ***extended_grid, int n,
 	free(coord);
 	DPRINTF("\n");
 
-	return changed;
+	return eliminations;
 }
 
