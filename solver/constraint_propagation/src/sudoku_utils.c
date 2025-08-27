@@ -9,12 +9,31 @@
 
 int **create_grid(int n)
 {
-	int i, j; /* Loop variables */
+	int i, j, k; /* Loop variables */
 	int **grid;
 
+	if (n <= 0) {
+		fprintf(stderr, "Error: Invalid grid size %d\n", n);
+		return NULL;
+	}
+
 	grid = (int **)malloc(n * sizeof(int *));
+	if (grid == NULL) {
+		fprintf(stderr, "Error: Failed to allocate memory for grid rows\n");
+		return NULL;
+	}
+
 	for (i = 0; i < n; i++) {
 		grid[i] = (int *)malloc(n * sizeof(int));
+		if (grid[i] == NULL) {
+			fprintf(stderr, "Error: Failed to allocate memory for grid row %d\n", i);
+			/* Free previously allocated rows */
+			for (k = 0; k < i; k++) {
+				free(grid[k]);
+			}
+			free(grid);
+			return NULL;
+		}
 		for (j = 0; j < n; j++) {
 			grid[i][j] = 0;
 		}
@@ -26,8 +45,14 @@ void free_grid(int **grid, int n)
 {
 	int i; /* Loop variable */
 
+	if (grid == NULL) {
+		return;
+	}
+
 	for (i = 0; i < n; i++) {
-		free(grid[i]);
+		if (grid[i] != NULL) {
+			free(grid[i]);
+		}
 	}
 	free(grid);
 }
@@ -35,19 +60,30 @@ void free_grid(int **grid, int n)
 int read_grid_from_file(int **grid, FILE *file, int n)
 {
 	int i, j;
-
-	/* Read values and fill the grid */
+	int value;
+	
+	/* Read all n*n values from a single line or across multiple reads */
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
-			if (fscanf(file, "%d", &grid[i][j]) != 1) {
+			if (fscanf(file, "%d", &value) != 1) {
 				if (feof(file))
 					return 1;
 
 				fprintf(stderr,
-					"Error: Invalid grid data at position [%d][%d]\n",
+					"Error: grid data at position [%d][%d]\n",
 					i, j);
 				return -1;
 			}
+			
+			/* Validate that the value is in the correct range */
+			if (value < 0 || value > n) {
+				fprintf(stderr,
+					"Error: Invalid sudoku value %d at position [%d][%d]. Values must be 0-%d\n",
+					value, i, j, n);
+				return -1;
+			}
+			
+			grid[i][j] = value;
 		}
 	}
 
@@ -135,6 +171,12 @@ sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
 	struct node *** extended;
 	int read_status;
 
+	/* Validate inputs */
+	if (filename == NULL || n <= 0) {
+		fprintf(stderr, "Error: Invalid parameters - filename is NULL or n <= 0\n");
+		return NULL;
+	}
+
 	file = fopen(filename, "r");
 	if (!file) {
 		fprintf(stderr, "Error: Failed to open file %s\n", filename);
@@ -161,7 +203,7 @@ sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
 
 		if (read_status != 0) {
 			/* If read failed because we reached EOF */
-			if (feof(file)) {
+			if (read_status == 1 || feof(file)) {
 				free_grid(grid, n); /* Free the unused grid */
 				break;
 			} else {
@@ -178,7 +220,9 @@ sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
 			int new_capacity = collection->capacity * 2;
 			int ***new_grids = (int ***)realloc(collection->grids, 
 							    new_capacity * sizeof(int **));
-			if (new_grids == NULL) {
+			struct node ****new_extended_grids = (struct node ****)realloc(collection->extended_grids,
+							    new_capacity * sizeof(struct node ***));
+			if (new_grids == NULL || new_extended_grids == NULL) {
 				fprintf(stderr, "Error: Failed to expand sudoku collection\n");
 				free_grid(grid, n);
 				free_sudoku_collection(collection);
@@ -187,6 +231,7 @@ sudoku_collection_t *read_all_sudokus_from_file(const char *filename, int n)
 			}
 
 			collection->grids = new_grids;
+			collection->extended_grids = new_extended_grids;
 			collection->capacity = new_capacity;
 		}
 
