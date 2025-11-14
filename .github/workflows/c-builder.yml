@@ -5,14 +5,35 @@ on:
     branches: [ "parallel_solver_constraint_pipeline","parallel_solver_constraint" ]
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["ubuntu-latest","windows-latest"]
+    runs-on: ${{matrix.os}}
     steps:
     - uses: actions/checkout@v4
+    - name: Setup C/C++ Compiler
+      id: setup-compiler
+      uses: rlalik/setup-cpp-compiler@master
+      with:
+        compiler: gcc-latest
+    - name: download-openmpi
+      run: wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.9.tar.gz
+    - name: extract-openmpi
+      run: tar -xvf ./openmpi-5.0.9.tar.gz
+    - name: configure-openmpi
+      run: ./openmpi-5.0.9/configure --prefix="/home/${USER}/.openmpi"
+    - name: install-openmpi
+      run: |
+        make -j
+        sudo make install
+    - name: set-openmpi-path
+      run: |
+        export PATH=${PATH}:/home/${USER}/.openmpi/bin/
+        export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/home/${USER}/.openmpi/lib/
+        echo ${PATH}
+        echo ${LD_LIBRARY_PATH}
     - name: configure
-      run: ./configure
-    - name: configure mpi
       shell: bash
       run: ./setup
     - name: make
@@ -20,5 +41,5 @@ jobs:
     - name: Create Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: built_src
+        name: built_src_${{matrix.os}}
         path: build/

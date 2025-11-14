@@ -36,17 +36,17 @@ generate:
 	@echo "BUILDING GENERATOR"
 	@echo "=============================================="
 	@echo "Directory: $(GENERATOR_DIR)"
-	@echo "Output location: $(CURDIR)"
+	@echo "Output location: $(CURDIR)/build"
 	@echo "=============================================="
 	@echo ""
 
 	$(MAKE) -C $(GENERATOR_DIR) || exit 1
 
 	@echo ""
-	@echo "Moving $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) to $(CURDIR)"
+	@echo "Moving $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) to $(CURDIR)/build"
 	@echo ""
 
-	mv $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) "$(CURDIR)/"
+	mv $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) "$(CURDIR)/build/"
 
 	@echo ""
 	@echo "=============================================="
@@ -61,18 +61,18 @@ solve:
 	@echo "BUILDING SOLVER"
 	@echo "=============================================="
 	@echo "Directory: $(SOLVER_DIR)"
-	@echo "Output location: $(CURDIR)"
+	@echo "Output location: $(CURDIR)/build"
 	@echo "=============================================="
 	@echo ""
 
 	$(MAKE) -C $(SOLVER_DIR) || exit 1
 
 	@echo ""
-	@echo "Moving solver executables to $(CURDIR)"
+	@echo "Moving solver executables to $(CURDIR)/build"
 	@echo ""
 
-	mv $(SOLVER_DIR)/$(SERIAL_SOLVER_EXECUTABLE) "$(CURDIR)/"
-	mv $(SOLVER_DIR)/$(PARALLEL_SOLVER_EXECUTABLE) "$(CURDIR)/"
+	mv $(SOLVER_DIR)/$(SERIAL_SOLVER_EXECUTABLE) "$(CURDIR)/build/"
+	mv $(SOLVER_DIR)/$(PARALLEL_SOLVER_EXECUTABLE) "$(CURDIR)/build/"
 
 	@echo ""
 	@echo "=============================================="
@@ -91,10 +91,10 @@ debug: clean
 	$(MAKE) -C $(GENERATOR_DIR) DEBUG=1 || exit 1
 
 	@echo ""
-	@echo "Moving $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) to $(CURDIR)"
+	@echo "Moving $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) to $(CURDIR)/build"
 	@echo ""
 
-	mv $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) "$(CURDIR)/"
+	mv $(GENERATOR_DIR)/$(GENERATOR_EXECUTABLE) "$(CURDIR)/build/"
 
 	@echo ""
 	@echo "=============================================="
@@ -105,11 +105,11 @@ debug: clean
 	$(MAKE) -C $(SOLVER_DIR) DEBUG=1 || exit 1
 
 	@echo ""
-	@echo "Moving solver executables to $(CURDIR)"
+	@echo "Moving solver executables to $(CURDIR)/build"
 	@echo ""
 
-	mv $(SOLVER_DIR)/$(SERIAL_SOLVER_EXECUTABLE) "$(CURDIR)/"
-	mv $(SOLVER_DIR)/$(PARALLEL_SOLVER_EXECUTABLE) "$(CURDIR)/"
+	mv $(SOLVER_DIR)/$(SERIAL_SOLVER_EXECUTABLE) "$(CURDIR)/build/"
+	mv $(SOLVER_DIR)/$(PARALLEL_SOLVER_EXECUTABLE) "$(CURDIR)/build/"
 
 	@echo ""
 	@echo "=============================================="

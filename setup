@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+#check gcc installation and version
+gcc --version
+if $?;then
+    echo "gcc compiler not installed, exiting"
+    exit 1
+fi
+#create build directory
+mkdir -p build
+#setup pthreads environment
