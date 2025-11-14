@@ -1,0 +1,24 @@
+name: C CI
+
+on:
+  push:
+    branches: [ "parallel_solver_constraint_pipeline","parallel_solver_constraint" ]
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: configure
+      run: ./configure
+    - name: configure mpi
+      shell: bash
+      run: ./setup
+    - name: make
+      run: make all
+    - name: Create Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: built_src
+        path: build/
