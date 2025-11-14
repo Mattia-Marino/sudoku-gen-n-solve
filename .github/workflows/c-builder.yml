@@ -40,7 +40,9 @@ jobs:
         echo ${LD_LIBRARY_PATH}
     - name: configure
       shell: bash
-      run: ./setup
+      run: |
+        chmod +x ./setup
+        ./setup
     - name: make
       run: make all
     - name: Create Artifact
