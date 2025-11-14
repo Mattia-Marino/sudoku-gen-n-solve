@@ -2,7 +2,7 @@
 
 #check gcc installation and version
 gcc --version
-if $?;then
+if [[ $? -ne 0 ]];then
     echo "gcc compiler not installed, exiting"
     exit 1
 fi
