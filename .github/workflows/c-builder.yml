@@ -25,12 +25,15 @@ jobs:
       run: tar -xvf ./openmpi-5.0.9.tar.gz
     - name: configure-openmpi
       shell: bash
-      run: ./openmpi-5.0.9/configure --prefix="/home/${USER}/.openmpi"
+      run: |
+        cd openmpi-5.0.9
+        ./configure --prefix="/home/${USER}/.openmpi"
     - name: install-openmpi
       shell: bash
       run: |
         make -j
         sudo make install
+        cd ..
     - name: set-openmpi-path
       shell: bash
       run: |
