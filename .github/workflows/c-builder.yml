@@ -31,9 +31,10 @@ jobs:
     - name: install-openmpi
       shell: bash
       run: |
+        pwd
+        cd openmpi-5.0.9
         make -j
         sudo make install
-        cd ..
     - name: set-openmpi-path
       shell: bash
       run: |
