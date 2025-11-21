@@ -97,19 +97,19 @@ $(BUILD_DIR)/$(SERIAL_DIR)/%.o: $(SRC_DIR)/$(SERIAL_DIR)/%.c | $(BUILD_DIR)/$(SE
 
 # Pattern rule for parallel object files
 $(BUILD_DIR)/$(PARALLEL_DIR)/%.o: $(SRC_DIR)/$(PARALLEL_DIR)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR)
-	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V1)
 $(BUILD_DIR)/$(PARALLEL_DIR_V1)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V1)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V1)
-	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V2)
 $(BUILD_DIR)/$(PARALLEL_DIR_V2)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V2)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V2)
-	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V3)
 $(BUILD_DIR)/$(PARALLEL_DIR_V3)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V3)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V3)
-	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Link the serial program
 $(SERIAL_OUTPUT): $(SERIAL_OBJS)
@@ -119,22 +119,22 @@ $(SERIAL_OUTPUT): $(SERIAL_OBJS)
 # Link the parallel program
 $(PARALLEL_OUTPUT): $(PARALLEL_OBJS)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Link the parallel program (V1)
 $(PARALLEL_OUTPUT_V1): $(PARALLEL_OBJS_V1)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Link the parallel program (V2)
 $(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Link the parallel program (V3)
 $(PARALLEL_OUTPUT_V3): $(PARALLEL_OBJS_V3)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Install the programs
 install: $(SERIAL_OUTPUT) $(PARALLEL_OUTPUT)
