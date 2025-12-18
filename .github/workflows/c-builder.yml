@@ -17,31 +17,11 @@ jobs:
       uses: rlalik/setup-cpp-compiler@master
       with:
         compiler: gcc-latest
-    - name: download-openmpi
-      shell: bash
-      run: wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.9.tar.gz
-    - name: extract-openmpi
-      shell: bash
-      run: tar -xvf ./openmpi-5.0.9.tar.gz
-    - name: configure-openmpi
-      shell: bash
-      run: |
-        cd openmpi-5.0.9
-        ./configure --prefix="/home/${USER}/.openmpi"
     - name: install-openmpi
       shell: bash
       run: |
-        pwd
-        cd openmpi-5.0.9
-        make -j
-        sudo make install
-    - name: set-openmpi-path
-      shell: bash
-      run: |
-        export PATH=${PATH}:/home/${USER}/.openmpi/bin/
-        export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/home/${USER}/.openmpi/lib/
-        echo ${PATH}
-        echo ${LD_LIBRARY_PATH}
+        sudo apt update
+        sudo apt install openmpi-bin openmpi-doc libopenmpi-dev build-essential -y
     - name: configure
       shell: bash
       run: |
