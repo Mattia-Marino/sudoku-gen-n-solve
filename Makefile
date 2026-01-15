@@ -1,7 +1,7 @@
 # Top-level Makefile
 
 # Define directories and executables
-BIN_DIR := bin
+BIN_DIR := build
 
 GENERATOR_DIR := generator
 GENERATOR_EXECUTABLE := sudoku_generator
