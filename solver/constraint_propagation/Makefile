@@ -1,7 +1,8 @@
 # Compiler and flags
 CC := gcc
 MPICC := mpicc
-CFLAGS := -Wall -Werror -std=c99
+# CFLAGS := -Wall -Werror -std=c99
+CFLAGS := -Wall -Wextra -std=c99 -pedantic -Iinclude
 LDFLAGS := -lm
 PTHREAD_FLAG := -lpthread
 
@@ -24,6 +25,7 @@ PARALLEL_OUTPUT_V3 := $(BINDIR)/$(PARALLEL_PROGRAM_V3)
 SRC_DIR := src
 INCLUDE_DIR := include
 BUILD_DIR := build
+PTHREADS_DIR := pthreads
 SERIAL_DIR := serial
 PARALLEL_DIR := parallel
 PARALLEL_DIR_V1 := parallel_v1
@@ -57,8 +59,9 @@ PARALLEL_OBJS_V2 := $(BUILD_DIR)/$(PARALLEL_DIR_V2)/main.o \
 PARALLEL_OBJS_V3 := $(BUILD_DIR)/$(PARALLEL_DIR_V3)/main.o \
     $(BUILD_DIR)/sudoku_utils.o \
     $(BUILD_DIR)/linked_list.o \
-    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
-    $(BUILD_DIR)/$(PARALLEL_DIR_V3)/solver.o
+    $(BUILD_DIR)/$(PTHREADS_DIR)/pthread_groups.o \
+    $(BUILD_DIR)/$(PTHREADS_DIR)/queue.o \
+    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o
 
 # Handle DEBUG flag from parent Makefile
 ifdef DEBUG
@@ -84,7 +87,7 @@ release: CFLAGS += -O3 -DNDEBUG
 release: clean serial parallel parallel_v1 parallel_v2 parallel_v3
 
 # Make sure build directories exist
-$(BUILD_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR_V1) $(BUILD_DIR)/$(PARALLEL_DIR_V2) $(BUILD_DIR)/$(PARALLEL_DIR_V3):
+$(BUILD_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR_V1) $(BUILD_DIR)/$(PARALLEL_DIR_V2) $(BUILD_DIR)/$(PARALLEL_DIR_V3) $(BUILD_DIR)/$(PTHREADS_DIR):
 	mkdir -p $@
 
 # Pattern rule for serial object files
@@ -97,19 +100,23 @@ $(BUILD_DIR)/$(SERIAL_DIR)/%.o: $(SRC_DIR)/$(SERIAL_DIR)/%.c | $(BUILD_DIR)/$(SE
 
 # Pattern rule for parallel object files
 $(BUILD_DIR)/$(PARALLEL_DIR)/%.o: $(SRC_DIR)/$(PARALLEL_DIR)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V1)
 $(BUILD_DIR)/$(PARALLEL_DIR_V1)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V1)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V1)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V2)
 $(BUILD_DIR)/$(PARALLEL_DIR_V2)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V2)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V2)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V3)
 $(BUILD_DIR)/$(PARALLEL_DIR_V3)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V3)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V3)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(CC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+
+# Pattern rule for pthreads object files
+$(BUILD_DIR)/$(PTHREADS_DIR)/%.o: $(SRC_DIR)/pthreads/%.c | $(BUILD_DIR)/$(PTHREADS_DIR)
+	$(CC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Link the serial program
 $(SERIAL_OUTPUT): $(SERIAL_OBJS)
@@ -119,22 +126,22 @@ $(SERIAL_OUTPUT): $(SERIAL_OBJS)
 # Link the parallel program
 $(PARALLEL_OUTPUT): $(PARALLEL_OBJS)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Link the parallel program (V1)
 $(PARALLEL_OUTPUT_V1): $(PARALLEL_OBJS_V1)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Link the parallel program (V2)
 $(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Link the parallel program (V3)
 $(PARALLEL_OUTPUT_V3): $(PARALLEL_OBJS_V3)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(CC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Install the programs
 install: $(SERIAL_OUTPUT) $(PARALLEL_OUTPUT)

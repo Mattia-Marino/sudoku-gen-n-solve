@@ -10,13 +10,15 @@
 # Build directories
 **/build/
 
+# Bin directories
+**/bin/
+
 # Executables
 a.out
 *.out
 sudoku_generator
 serial_sudoku_solver
-parallel_sudoku_solver
-parallel_sudoku_solver_v1
+parallel_sudoku_solver*
 serial_sudoku_generator
 parallel_sudoku_generator
 
