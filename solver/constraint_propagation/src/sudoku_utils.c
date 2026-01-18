@@ -52,6 +52,111 @@ int read_grid_from_file(int **grid, FILE *file, int n)
 	return 0;
 }
 
+int read_grid_from_string(int **grid, const char *line, int n)
+{
+	int i, j;
+	const char *ptr;
+	char *endptr;
+	long value;
+
+	if (line == NULL || grid == NULL) {
+		fprintf(stderr, "Error: NULL pointer passed to read_grid_from_string\n");
+		return -1;
+	}
+
+	ptr = line;
+
+	/* Read values and fill the grid */
+	for (i = 0; i < n; i++) {
+		for (j = 0; j < n; j++) {
+			/* Skip leading whitespace */
+			while (*ptr == ' ' || *ptr == '\t')
+				ptr++;
+
+			/* Check if we've reached end of string prematurely */
+			if (*ptr == '\0' || *ptr == '\n') {
+				fprintf(stderr,
+					"Error: Insufficient data in string at position [%d][%d]\n",
+					i, j);
+				return -1;
+			}
+
+			/* Parse the integer */
+			value = strtol(ptr, &endptr, 10);
+
+			/* Check if parsing was successful */
+			if (ptr == endptr) {
+				fprintf(stderr,
+					"Error: Invalid grid data at position [%d][%d]\n",
+					i, j);
+				return -1;
+			}
+
+			grid[i][j] = (int)value;
+			ptr = endptr;
+		}
+	}
+
+	return 0;
+}
+
+int write_grid_to_string(int **grid, char *line, int n)
+{
+	int i, j;
+	char *ptr;
+	int written;
+
+	if (line == NULL || grid == NULL) {
+		fprintf(stderr, "Error: NULL pointer passed to write_grid_to_string\n");
+		return -1;
+	}
+
+	ptr = line;
+
+	/* Write grid values to string */
+	for (i = 0; i < n; i++) {
+		for (j = 0; j < n; j++) {
+			written = sprintf(ptr, "%d ", grid[i][j]);
+			if (written < 0) {
+				fprintf(stderr, "Error: Failed to write grid data at position [%d][%d]\n", i, j);
+				return -1;
+			}
+			ptr += written;
+		}
+	}
+
+	/* Add newline at the end */
+	*ptr = '\n';
+	ptr++;
+	*ptr = '\0';
+
+	return 0;
+}
+
+size_t get_grid_string_size(int n) {
+	int max_val = n;
+	int digits_per_number = 0;
+
+	/* Calculate number of digits in n (the largest possible value) */
+	if (max_val == 0) {
+		digits_per_number = 1;
+	} else {
+		int temp = max_val;
+		while (temp > 0) {
+			temp /= 10;
+			digits_per_number++;
+		}
+	}
+
+	/* * Formula:
+	* (Total Cells * (Digits + Space)) + Newline + NullTerminator
+	*/
+	size_t total_cells = (size_t)n * n;
+	size_t chars_per_cell = digits_per_number + 1; // digit(s) + ' '
+	
+	return (total_cells * chars_per_cell) + 1 + 1; 
+}
+
 int check_solved(int **grid, int n)
 {
 	int i, j;
@@ -60,6 +165,49 @@ int check_solved(int **grid, int n)
 		for (j = 0; j < n; ++j)
 			if (grid[i][j] == 0)
 				return 0;
+
+	return 1;
+}
+
+int check_solved_string(const char *line, int n)
+{
+	const char *ptr;
+	char *endptr;
+	long value;
+	int count;
+
+	if (line == NULL) {
+		fprintf(stderr, "Error: NULL pointer passed to check_solved_string\n");
+		return -1;
+	}
+
+	ptr = line;
+	count = 0;
+
+	/* Parse all numbers in the string */
+	while (*ptr != '\0' && *ptr != '\n' && count < n * n) {
+		/* Skip leading whitespace */
+		while (*ptr == ' ' || *ptr == '\t')
+			ptr++;
+
+		/* Check if we've reached end of string */
+		if (*ptr == '\0' || *ptr == '\n')
+			break;
+
+		/* Parse the integer */
+		value = strtol(ptr, &endptr, 10);
+
+		/* Check if parsing was successful */
+		if (ptr == endptr)
+			break;
+
+		/* If we find a 0, the sudoku is not solved */
+		if (value == 0)
+			return 0;
+
+		ptr = endptr;
+		count++;
+	}
 
 	return 1;
 }

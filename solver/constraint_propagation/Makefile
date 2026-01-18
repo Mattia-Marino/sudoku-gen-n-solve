@@ -112,7 +112,7 @@ $(BUILD_DIR)/$(PARALLEL_DIR_V2)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V2)/%.c | $(BUILD
 
 # Pattern rule for parallel object files (V3)
 $(BUILD_DIR)/$(PARALLEL_DIR_V3)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V3)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V3)
-	$(CC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for pthreads object files
 $(BUILD_DIR)/$(PTHREADS_DIR)/%.o: $(SRC_DIR)/pthreads/%.c | $(BUILD_DIR)/$(PTHREADS_DIR)
@@ -141,7 +141,7 @@ $(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
 # Link the parallel program (V3)
 $(PARALLEL_OUTPUT_V3): $(PARALLEL_OBJS_V3)
 	@mkdir -p "$(BINDIR)"
-	$(CC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Install the programs
 install: $(SERIAL_OUTPUT) $(PARALLEL_OUTPUT)
