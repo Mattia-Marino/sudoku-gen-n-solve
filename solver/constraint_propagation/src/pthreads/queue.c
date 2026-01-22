@@ -1,17 +1,12 @@
 #define THREADSAFE
 
+#include "queue.h"
 #include <string.h>
 #include <pthread.h>
+#include "commons.h"
 
 #include "../../include/queue.h"
 #include "../../include/debug.h"
-
-
-typedef struct Node
-{
-	void *data;
-	struct Node *next;
-} node;
 
 node *createNode(void *data, size_t allocSize)
 {
@@ -59,68 +54,6 @@ queue *createQueue(size_t allocSize)
 
 	int res = pthread_mutex_init(&(q->mutex_lock), NULL); 
 	res = pthread_cond_init(&(q->empty_condition), NULL);
-	return q;
-}
-
-queue *enqueue(queue *q, void *data)
-{
-	if(q == NULL || data == NULL)
-		return NULL;
-
-	DPRINTF("Allocating node with size: %ld\n", q->allocationSize);
-	node *toInsert = createNode(data, q->allocationSize);
-	if(toInsert == NULL)
-		return NULL;
-
-	acquire_lock(&(q->mutex_lock));
-	DPRINTF("Queue size before enqueue: %ld\n", q->size);
-	if(q->size == 0)
-		q->head = q->tail = toInsert;	/* First insertion */
-	else {
-		q->tail->next = toInsert;
-		q->tail = toInsert;
-	}
-
-	q->size++;
-	release_lock(&(q->mutex_lock));
-	condition_signal(&(q->empty_condition));
-	DPRINTF("Allocated node: %ld\n", q->size);
-
-	return q;
-}
-
-queue *dequeue(queue *q, void *data)
-{
-	if(q == NULL) {
-		return NULL;
-	}
-
-	acquire_lock(&(q->mutex_lock));
-	DPRINTF("Queue size before enqueue: %ld\n", q->size);
-	while (q->size == 0) {
-		DPRINTF("Queue size is %ld, waiting\n", q->size);
-		condition_wait(&(q->empty_condition), &(q->mutex_lock));
-		DPRINTF("Queue size is %ld, resuming\n", q->size);
-	}
-
-	node *toDel = q->head;
-	if(q->size == 1) {
-		memcpy(data, toDel->data, q->allocationSize);
-		free(toDel->data);
-		free(toDel);
-		q->head = q->tail = NULL;
-		q->size--;
-	}
-	else {
-		q->head = q->head->next;
-		memcpy(data, toDel->data, q->allocationSize);
-		free(toDel->data);
-		free(toDel);
-		q->size--;
-	}
-	
-	DPRINTF("Releasing dequeue lock with size %ld\n", q->size);
-	release_lock(&(q->mutex_lock));
 	return q;
 }
 
@@ -279,4 +212,130 @@ void *findMem(queue *q, void *data)
 	}
 
 	return NULL;
+}
+
+void _enqueue(queue *q,node *toInsert)
+{
+	if(q->size == 0)
+	{ // First insertion
+		q->head = q->tail = toInsert;
+	}
+	else
+	{
+		q->tail->next = toInsert;
+		q->tail = toInsert;
+	}
+
+	q->size++;
+    return;
+}
+node  *_dequeue(queue *q, void *data)
+{
+    while (q->size == 0)
+    {
+        dprint("Queue size is %ld, waiting\n",q->size);
+        condition_wait(&(q->empty_condition),&(q->mutex_lock));
+        dprint("Queue size is %ld, resuming\n",q->size);
+    }
+    node *toDel = q->head;
+    if(q->size == 1)
+    {
+        memcpy(data, toDel->data, q->allocationSize);
+        q->head = q->tail = NULL;
+    }
+    else{
+        q->head = q->head->next;
+        memcpy(data, toDel->data, q->allocationSize);
+    }
+    q->size--;
+    return toDel;
+}
+
+queue *enqueue(queue *q, void *data)
+{
+    if(q == NULL || data == NULL)
+    {
+        return NULL;
+    }
+
+    node *toInsert = createNode(data, q->allocationSize);
+    if(toInsert == NULL)
+    {
+        return NULL;
+    }
+
+    acquire_lock(&(q->mutex_lock));
+    _enqueue(q,toInsert);
+    release_lock(&(q->mutex_lock));
+    condition_signal(&(q->empty_condition));
+    return q;
+}
+
+queue *dequeue(queue *q, void *data)
+{
+    if(q == NULL)
+    {
+        return NULL;
+    }
+    acquire_lock(&(q->mutex_lock));
+    node *toDel = _dequeue(q,data);
+    release_lock(&(q->mutex_lock));
+    free(toDel->data);
+    free(toDel);
+    return q;
+}
+
+size_t batchDequeue(queue *q,void* data,size_t batch_size){
+    
+    if(q == NULL)
+    {
+        return NULL;
+    }
+
+    if (batch_size == 0){
+        return q;
+    }
+    void *data_el;
+    size_t toDel_c = 0;
+    size_t size = batch_size;
+    if (size > q->size)
+        size = q->size;
+    node* toDel_array[size];
+    
+    acquire_lock(&(q->mutex_lock));
+    for (size_t i=0;i<size;++i){
+        data_el = data+i*q->allocationSize;
+        toDel_array[i] = _dequeue(q,data_el);
+        toDel_c++;
+    }
+    release_lock(&(q->mutex_lock));
+    for (size_t i=0;i<toDel_c;++i ){
+        free(toDel_array[i]->data);
+        free(toDel_array[i]);
+    }
+    return size;
+}
+
+queue *batchEnqueue(queue *q,void* data,size_t batch_size){
+    if(q == NULL)
+    {
+        return NULL;
+    }
+    if (batch_size == 0){
+        return q;
+    }
+    void *data_el;
+    node *nd;
+    node** toInsert_array = malloc(sizeof(node*)*batch_size);
+    for (size_t i=0;i<batch_size;i++){
+       data_el = data+i*q->allocationSize;
+       nd = createNode(data_el, q->allocationSize);
+       toInsert_array[i] = nd;
+    }
+    acquire_lock(&(q->mutex_lock));
+    for (size_t i=0;i<batch_size;++i){
+        _enqueue(q,toInsert_array[i]);
+    }
+    release_lock(&(q->mutex_lock));
+    return q;
 }

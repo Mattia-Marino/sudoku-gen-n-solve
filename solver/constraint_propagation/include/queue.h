@@ -8,37 +8,6 @@
 #define THREADSAFE_ACTIVE 0
 #endif
 
-#define acquire_lock(lock)\
-do { \
-	if (THREADSAFE_ACTIVE){\
-	int r = pthread_mutex_lock(lock);\
-	if (r!=0){printf("Lock not acquired, error %d",r) ;} \
-	}\
-}while (0)
-
-#define release_lock(lock)\
-do { \
-	if (THREADSAFE_ACTIVE){\
-	int r = pthread_mutex_unlock(lock);\
-	if (r!=0){printf("Lock not acquired, error %d",r) ;} \
-	}\
-}while (0)
-
-#define condition_wait(cond,lock)\
-do { \
-	if (THREADSAFE_ACTIVE){\
-	int r = pthread_cond_wait(cond,lock);\
-	if (r!=0){printf("Lock not acquired, error %d",r) ;} \
-	}\
-}while (0)
-
-#define condition_signal(cond)\
-do { \
-	if (THREADSAFE_ACTIVE){\
-	int r = pthread_cond_signal(cond);\
-	if (r!=0){printf("Lock not acquired, error %d",r) ;} \
-	}\
-}while (0)
 
 
 typedef struct Queue queue;
@@ -141,3 +110,6 @@ void *find(queue *q, bool (*predicate)(void *data));
  */
 void *findMem(queue *q, void *data);
 
+size_t batchDequeue(queue *q,void* data,size_t batch_size);
+
+queue *batchEnqueue(queue *q,void* data,size_t batch_size);
