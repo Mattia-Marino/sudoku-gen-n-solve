@@ -233,9 +233,7 @@ node  *_dequeue(queue *q, void *data)
 {
     while (q->size == 0)
     {
-        dprint("Queue size is %ld, waiting\n",q->size);
         condition_wait(&(q->empty_condition),&(q->mutex_lock));
-        dprint("Queue size is %ld, resuming\n",q->size);
     }
     node *toDel = q->head;
     if(q->size == 1)
