@@ -6,29 +6,9 @@
 #include "commons.h"
 
 #include "../../include/queue.h"
+#include "../../include/commons.h"
 #include "../../include/debug.h"
 
-node *createNode(void *data, size_t allocSize)
-{
-	DPRINTF("Creating node of size: %ld\n", sizeof(node));
-	node *toInsert = (node *) malloc(sizeof(node));
-
-	if(toInsert == NULL)
-		return NULL;
-
-	DPRINTF("Allocating space for data of size: %ld\n", allocSize);
-	toInsert->data = malloc(allocSize);
-	if(toInsert->data == NULL) {
-		free(toInsert);
-		return NULL;
-	}
-
-	DPRINTF("Copying data to node in address %ld\n", data);
-	memcpy(toInsert->data, data, allocSize);
-	toInsert->next = NULL;
-
-	return toInsert;
-}
 
 typedef struct Queue
 {
