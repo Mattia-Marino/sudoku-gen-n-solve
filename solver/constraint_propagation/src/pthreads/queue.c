@@ -233,9 +233,7 @@ node  *_dequeue(queue *q, void *data)
 {
     while (q->size == 0)
     {
-        dprint("Queue size is %ld, waiting\n",q->size);
         condition_wait(&(q->empty_condition),&(q->mutex_lock));
-        dprint("Queue size is %ld, resuming\n",q->size);
     }
     node *toDel = q->head;
     if(q->size == 1)
@@ -256,8 +254,6 @@ queue *enqueue(queue *q, void *data)
         return NULL;
     }
 
-    dprint("Allocating node with size: %ld\n",q->allocationSize);
-    dprint("Value inserted is: %d\n",*(int*)data);
     node *toInsert = createNode(data, q->allocationSize);
     if(toInsert == NULL)
     {
@@ -265,11 +261,9 @@ queue *enqueue(queue *q, void *data)
     }
 
     acquire_lock(&(q->mutex_lock));
-    dprint("Queue size before enqueue: %ld\n",q->size);
     _enqueue(q,toInsert);
     release_lock(&(q->mutex_lock));
     condition_signal(&(q->empty_condition));
-    dprint("Allocated node: %ld\n",q->size);
 
     return q;
 }
@@ -281,9 +275,7 @@ queue *dequeue(queue *q, void *data)
         return NULL;
     }
     acquire_lock(&(q->mutex_lock));
-    dprint("Queue size before dequeue: %ld\n",q->size);
     node *toDel = _dequeue(q,data);
-    dprint("Releasing dequeue lock with size %ld\n",q->size);
     release_lock(&(q->mutex_lock));
     memcpy(data, toDel->data, q->allocationSize);
     free(toDel->data);
