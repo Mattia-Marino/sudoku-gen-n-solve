@@ -61,6 +61,7 @@ PARALLEL_OBJS_V3 := $(BUILD_DIR)/$(PARALLEL_DIR_V3)/main.o \
     $(BUILD_DIR)/linked_list.o \
     $(BUILD_DIR)/$(PTHREADS_DIR)/pthread_groups.o \
     $(BUILD_DIR)/$(PTHREADS_DIR)/queue.o \
+    $(BUILD_DIR)/$(PTHREADS_DIR)/commons.o \
     $(BUILD_DIR)/$(SERIAL_DIR)/solver.o
 
 # Handle DEBUG flag from parent Makefile
