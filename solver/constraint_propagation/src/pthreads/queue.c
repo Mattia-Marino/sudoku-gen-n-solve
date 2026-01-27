@@ -233,17 +233,17 @@ node  *_dequeue(queue *q, void *data)
 {
     while (q->size == 0)
     {
+        dprint("Queue size is %ld, waiting\n",q->size);
         condition_wait(&(q->empty_condition),&(q->mutex_lock));
+        dprint("Queue size is %ld, resuming\n",q->size);
     }
     node *toDel = q->head;
     if(q->size == 1)
     {
-        memcpy(data, toDel->data, q->allocationSize);
         q->head = q->tail = NULL;
     }
     else{
         q->head = q->head->next;
-        memcpy(data, toDel->data, q->allocationSize);
     }
     q->size--;
     return toDel;
@@ -256,6 +256,8 @@ queue *enqueue(queue *q, void *data)
         return NULL;
     }
 
+    dprint("Allocating node with size: %ld\n",q->allocationSize);
+    dprint("Value inserted is: %d\n",*(int*)data);
     node *toInsert = createNode(data, q->allocationSize);
     if(toInsert == NULL)
     {
@@ -263,9 +265,12 @@ queue *enqueue(queue *q, void *data)
     }
 
     acquire_lock(&(q->mutex_lock));
+    dprint("Queue size before enqueue: %ld\n",q->size);
     _enqueue(q,toInsert);
     release_lock(&(q->mutex_lock));
     condition_signal(&(q->empty_condition));
+    dprint("Allocated node: %ld\n",q->size);
+
     return q;
 }
 
@@ -276,8 +281,11 @@ queue *dequeue(queue *q, void *data)
         return NULL;
     }
     acquire_lock(&(q->mutex_lock));
+    dprint("Queue size before dequeue: %ld\n",q->size);
     node *toDel = _dequeue(q,data);
+    dprint("Releasing dequeue lock with size %ld\n",q->size);
     release_lock(&(q->mutex_lock));
+    memcpy(data, toDel->data, q->allocationSize);
     free(toDel->data);
     free(toDel);
     return q;
@@ -287,29 +295,33 @@ size_t batchDequeue(queue *q,void* data,size_t batch_size){
     
     if(q == NULL)
     {
-        return NULL;
+        return 0;
     }
 
     if (batch_size == 0){
-        return q;
+        return 0;
     }
-    void *data_el;
-    size_t toDel_c = 0;
     size_t size = batch_size;
+    node* toDel_array;
+    node* toDel;
+    acquire_lock(&(q->mutex_lock));
     if (size > q->size)
         size = q->size;
-    node* toDel_array[size];
-    
-    acquire_lock(&(q->mutex_lock));
-    for (size_t i=0;i<size;++i){
-        data_el = data+i*q->allocationSize;
-        toDel_array[i] = _dequeue(q,data_el);
-        toDel_c++;
+    toDel_array = q->head;
+    for(size_t i=0;i<size;i++)
+    {
+        q->head = q->head->next;
     }
+    q->size=q->size-size;
+    if (q->size == 0)
+        q->tail=NULL;
     release_lock(&(q->mutex_lock));
-    for (size_t i=0;i<toDel_c;++i ){
-        free(toDel_array[i]->data);
-        free(toDel_array[i]);
+    for (size_t i=0;i<size;++i ){
+        toDel = toDel_array->next;
+        memcpy(data+i*q->allocationSize, toDel_array->data, q->allocationSize);
+        free(toDel_array->data);
+        free(toDel_array);
+        toDel_array=toDel;
     }
     return size;
 }
@@ -322,18 +334,20 @@ queue *batchEnqueue(queue *q,void* data,size_t batch_size){
     if (batch_size == 0){
         return q;
     }
-    void *data_el;
-    node *nd;
-    node** toInsert_array = malloc(sizeof(node*)*batch_size);
-    for (size_t i=0;i<batch_size;i++){
-       data_el = data+i*q->allocationSize;
-       nd = createNode(data_el, q->allocationSize);
-       toInsert_array[i] = nd;
-    }
+    node** toInsert_array = batchNodeCreate(data,q->allocationSize,batch_size);
     acquire_lock(&(q->mutex_lock));
-    for (size_t i=0;i<batch_size;++i){
-        _enqueue(q,toInsert_array[i]);
-    }
+	if(q->size == 0)
+	{ // First insertion
+		q->head = toInsert_array[0];
+        q->tail = toInsert_array[batch_size-1];
+	}
+	else
+	{
+		q->tail->next = toInsert_array[0];
+		q->tail = toInsert_array[batch_size-1];
+	}
+
+	q->size=q->size+batch_size;
     release_lock(&(q->mutex_lock));
     return q;
 }

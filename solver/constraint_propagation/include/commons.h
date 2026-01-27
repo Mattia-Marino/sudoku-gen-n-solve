@@ -15,6 +15,7 @@ typedef void (*void_callback)(void *);
 typedef bool (*comparator)(void *,void *);
 
 node *createNode(void *data, size_t allocSize);
+node** batchNodeCreate(void *data,size_t allocation_size,size_t size);
 
 #define acquire_lock(lock)\
 do { \
