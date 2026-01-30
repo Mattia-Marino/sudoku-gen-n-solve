@@ -3,7 +3,7 @@
 TOTAL=$1
 FILE_NAME=$2
 CORES_PER_NODE=16
-EXECUTABLE="./build/parallel_sudoku_solver_v3"
+EXECUTABLE="./build/parallel_sudoku_solver_v4"
 
 # Check arguments
 if [ -z "$TOTAL" ] || [ -z "$FILE_NAME" ]; then
