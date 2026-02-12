@@ -153,6 +153,7 @@ int main(int argc, char **argv)
 	* Instead of reading the entire file and scattering the raw content,
 	* rank 0 only counts lines and computes byte offsets so that each
 	* rank can independently seek and read its own portion.
+	* Work is distributed proportionally to thread count per rank.
 	* ******************************************************************/
 	if (rank == 0) {
 		file = fopen(filename, "r");
@@ -170,15 +171,46 @@ int main(int argc, char **argv)
 
 		DPRINTF("Rank 0: Found %d lines.\n", total_lines);
 
-		/* Calculate line distribution across ranks */
-		int lines_per_rank = total_lines / size;
-		int remainder = total_lines % size;
+		/* First, calculate thread distribution across all ranks */
+		int *all_thread_counts = (int *) malloc(size * sizeof(int));
+		int total_threads_allocated = 0;
+		
+		for (i = 0; i < size; i++) {
+			int threads_before = i * MAX_THREADS_PER_PROCESS;
+			if (threads_before >= n_threads) {
+				all_thread_counts[i] = 0;
+			} else {
+				int remaining = n_threads - threads_before;
+				all_thread_counts[i] = (remaining > MAX_THREADS_PER_PROCESS)
+									 ? MAX_THREADS_PER_PROCESS : remaining;
+			}
+			total_threads_allocated += all_thread_counts[i];
+		}
 
+		/* Calculate line distribution based on thread counts */
 		all_line_counts = (int *) malloc(size * sizeof(int));
 		all_byte_offsets = (long *) malloc(size * sizeof(long));
 
-		for (i = 0; i < size; i++)
-			all_line_counts[i] = lines_per_rank + (i < remainder ? 1 : 0);
+		if (total_threads_allocated > 0) {
+			int lines_assigned = 0;
+			for (i = 0; i < size; i++) {
+				if (i == size - 1) {
+					/* Last rank gets remaining lines to handle rounding */
+					all_line_counts[i] = total_lines - lines_assigned;
+				} else {
+					/* Proportional distribution based on thread count */
+					all_line_counts[i] = (int)((double)all_thread_counts[i] / 
+											   total_threads_allocated * total_lines);
+					lines_assigned += all_line_counts[i];
+				}
+			}
+		} else {
+			/* No threads allocated - should not happen */
+			for (i = 0; i < size; i++)
+				all_line_counts[i] = 0;
+		}
+		
+		free(all_thread_counts);
 
 		/* Scan file to compute byte offsets for each rank's start position */
 		all_byte_offsets[0] = 0;
@@ -188,6 +220,13 @@ int main(int argc, char **argv)
 			int next_boundary = all_line_counts[0];
 			int rank_idx = 1;
 
+			/* Handle case where rank 0 has no lines */
+			while (rank_idx < size && all_line_counts[rank_idx - 1] == 0) {
+				all_byte_offsets[rank_idx] = 0;
+				next_boundary += all_line_counts[rank_idx];
+				rank_idx++;
+			}
+
 			while (rank_idx < size && (ch = fgetc(file)) != EOF) {
 				if (ch == '\n') {
 					total_newlines++;
@@ -195,6 +234,11 @@ int main(int argc, char **argv)
 						all_byte_offsets[rank_idx] = ftell(file);
 						next_boundary += all_line_counts[rank_idx];
 						rank_idx++;
+						/* Skip ranks with no lines */
+						while (rank_idx < size && all_line_counts[rank_idx] == 0) {
+							all_byte_offsets[rank_idx] = all_byte_offsets[rank_idx - 1];
+							rank_idx++;
+						}
 					}
 				}
 			}
@@ -243,7 +287,7 @@ int main(int argc, char **argv)
 	* funneling everything through rank 0.
 	* ******************************************************************/
 
-	MPI_Barrier(MPI_COMM_WORLD);		/* Barrier needed to sync, otherwise rank 0 will start processing before the others*/
+	MPI_Barrier(MPI_COMM_WORLD);	/* Barrier needed to sync, otherwise rank 0 will start processing before the others*/
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
 	printf("[%3.6f] - Rank %d - All ready\n", computation_time, rank);
