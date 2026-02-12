@@ -16,39 +16,35 @@
 #include "../../include/debug.h"
 #include "../../include/solver.h"
 
-void *outputs[64];
+void *outputs[15];
 
-queue *q_n_sudoku; /* The number of sudoku puzzles assigned to each thread */
-queue *q_in;       /* The queue to fill with sudokus to solve */
-queue *q_out;      /* The queue to receive the solved sudokus */
-int sudoku_size;   /* The size of the sudoku */
+int ***all_grids;	/* All the grids assigned to the computational node */
+int sudoku_size;	/* The size of the sudoku */
+queue *q_range;		/* The queue containing the operating range for each thread */
 
 typedef void *( *target )( void *);
 
-/* Worker thread function: Consumes from q_in, solves, produces to q_out */
+typedef struct range {
+	int start;
+	int end;
+} range;
+
+/* Worker thread function, solves sudoku puzzles in all_grids in-place */
 void *pthreads_solver()
 {
-	int num_sudoku;
-	int ***all_grids;
-	size_t i;
-	size_t elements;
+	int i;
+	range r;
 
-	if (!isEmpty(q_n_sudoku)) {
-		dequeue(q_n_sudoku, &num_sudoku);
+	if (!isEmpty(q_range)) {
+		/* Fetch the range */
+		dequeue(q_range, &r);
+		printf("\tMy range is [%d - %d]\n", r.start, r.end);
 
-		all_grids = (int ***) malloc(num_sudoku * sizeof(int **));
-
-		/* Fetch a batch of puzzles */
-		elements = batchDequeue(q_in, all_grids, num_sudoku);
-
-		/* Solve them */
-		for (i = 0; i < elements; ++i)
+		/* Solve the assigned sudoku puzzles in-place */
+		for (i = r.start; i <= r.end; ++i)
 				sudoku_solver(all_grids[i], sudoku_size);
-
-		/* Push solved puzzles to output queue */
-		batchEnqueue(q_out, all_grids, elements);
 	}
-	
+
 	return NULL;
 }
 
@@ -75,8 +71,6 @@ int main(int argc, char **argv)
 	const int MAX_THREADS_PER_PROCESS = 15;
 
 	/* Parsing and Processing */
-	int ***all_grids;
-	int **grid;
 	char *filename = NULL;
 	FILE *file;
 	int opt, i;
@@ -91,7 +85,7 @@ int main(int argc, char **argv)
 	/* Timing */
 	struct timespec start_time, end_time;
 	double computation_time;
-	
+
 	/* For debugging purposes */
 	struct timespec ts;
 	struct timespec ts_start;
@@ -113,6 +107,8 @@ int main(int argc, char **argv)
 	* eliminating the need to broadcast configuration values.
 	* ******************************************************************/
 	{
+		int sqrt_n;
+
 		static struct option long_options[] = {
 			{"nthreads", required_argument, 0, 'n'},
 			{"size",     required_argument, 0, 's'},
@@ -134,6 +130,7 @@ int main(int argc, char **argv)
 		} else {
 			if (rank == 0)
 				fprintf(stderr, "Error: Missing filename\n");
+
 			MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 			return EXIT_FAILURE;
 		}
@@ -143,7 +140,8 @@ int main(int argc, char **argv)
 			MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 			return EXIT_FAILURE;
 		}
-		int sqrt_n = (int)sqrt(sudoku_size);
+
+		sqrt_n = (int)sqrt(sudoku_size);
 		if (sqrt_n * sqrt_n != sudoku_size) {
 			MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 			return EXIT_FAILURE;
@@ -245,7 +243,7 @@ int main(int argc, char **argv)
 	* funneling everything through rank 0.
 	* ******************************************************************/
 
-	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_WORLD);		/* Barrier needed to sync, otherwise rank 0 will start processing before the others*/
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 	computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
 	printf("[%3.6f] - Rank %d - All ready\n", computation_time, rank);
@@ -270,8 +268,6 @@ int main(int argc, char **argv)
 
 		/* Parse our assigned lines directly into grids */
 		all_grids = (int ***) malloc(local_num_lines * sizeof(int **));
-		q_in = createQueue(sizeof(grid));
-		q_out = createQueue(sizeof(grid));
 
 		{
 			char line_buf[8192];
@@ -296,19 +292,22 @@ int main(int argc, char **argv)
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
 		printf("[%3.6f] - Rank %d - Closing file\n", computation_time, rank);
 
-		/* Enqueue all work */
-		batchEnqueue(q_in, all_grids, local_num_lines);
-
-		/* Load Balance: Assign puzzles to threads */
-		q_n_sudoku = createQueue(sizeof(int));
+		q_range = createQueue(sizeof(range));
 		{
+			range r;
+			int load;
 			int base_load = local_num_lines / local_threads;
 			int rem_load = local_num_lines % local_threads;
 			for (i = 0; i < local_threads; ++i) {
-				int load = base_load + (i < rem_load ? 1 : 0);
-				enqueue(q_n_sudoku, &load);
+				load = base_load + (i < rem_load ? 1 : 0);
+
+				r.start = i * load;
+				r.end = r.start + load - 1;
+
+				enqueue(q_range, &r);
 			}
 		}
+
 
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
@@ -335,11 +334,10 @@ int main(int argc, char **argv)
 			local_output_buffer = (char *) malloc(local_output_size_bytes);
 			curr_out_ptr = local_output_buffer;
 
-			while (!isEmpty(q_out)) {
-				dequeue(q_out, &grid);
-				write_grid_to_string(grid, curr_out_ptr, sudoku_size);
+			for (i = 0; i < local_num_lines; ++i) {
+				write_grid_to_string(all_grids[i], curr_out_ptr, sudoku_size);
 				curr_out_ptr += grid_string_len;
-				free_grid(grid, sudoku_size);
+				free_grid(all_grids[i], sudoku_size);
 			}
 		}
 
@@ -392,7 +390,7 @@ int main(int argc, char **argv)
 		MPI_Gatherv(local_output_buffer, my_output_bytes, MPI_CHAR,
 					final_output_buffer, recvcounts, rdispls, MPI_CHAR,
 					0, MPI_COMM_WORLD);
-		
+
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
 		printf("[%3.6f] - Rank %d - Gathering completed\n", computation_time, rank);
