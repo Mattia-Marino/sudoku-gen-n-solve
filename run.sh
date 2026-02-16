@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- Configuration ---
-EXECUTABLE="./build/parallel_sudoku_solver_v5"
+EXECUTABLE="./build/parallel_sudoku_solver_v6"
 MACHINEFILE="machinefile.txt"
 CORES_PER_NODE=16
 
