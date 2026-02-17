@@ -119,10 +119,10 @@ parallel_v6: $(PARALLEL_OUTPUT_V6)
 
 # Build configurations
 debug: CFLAGS += -g -DDEBUG
-debug: clean serial parallel parallel_v1 parallel_v2 parallel_v3 parallel_v4 parallel_v5 parallel_v5
+debug: clean serial parallel parallel_v1 parallel_v2 parallel_v3 parallel_v4 parallel_v5 parallel_v6
 
 release: CFLAGS += -O3 -DNDEBUG
-release: clean serial parallel parallel_v1 parallel_v2 parallel_v3 parallel_v4 parallel_v5 parallel_v5
+release: clean serial parallel parallel_v1 parallel_v2 parallel_v3 parallel_v4 parallel_v5 parallel_v6
 
 # Make sure build directories exist
 $(BUILD_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR_V1) $(BUILD_DIR)/$(PARALLEL_DIR_V2) $(BUILD_DIR)/$(PARALLEL_DIR_V3) $(BUILD_DIR)/$(PARALLEL_DIR_V4) $(BUILD_DIR)/$(PARALLEL_DIR_V5) $(BUILD_DIR)/$(PARALLEL_DIR_V6) $(BUILD_DIR)/$(PTHREADS_DIR):

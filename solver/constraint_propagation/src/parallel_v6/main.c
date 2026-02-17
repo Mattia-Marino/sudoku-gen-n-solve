@@ -30,7 +30,8 @@ typedef struct {
 	pthread_barrier_t barrier_done;
 	pthread_barrier_t barrier_solve;
 	volatile int data_is_over;
-	volatile int shared_is_changed;
+	volatile int thread_changed[3]; /* Per-thread slot for is_changed reduction */
+	int *deletions; /* Shared bitmask buffer for annotate-then-delete */
 } tg_sync;
 
 tg_sync *group_syncs;		/* Per-threadgroup synchronization, indexed by tg_id */
@@ -54,17 +55,21 @@ void *pthreads_solver(void *arg)
 	int thread_id = ta->thread_id;
 	tg_sync *sync = &group_syncs[tg_id];
 
-	printf("Threadgroup %d - Thread %d is ready (group size: %d)\n",
-		   tg_id, thread_id, ta->tg_size);
+	// printf("Threadgroup %d - Thread %d is ready (group size: %d)\n",
+	// 	   tg_id, thread_id, ta->tg_size);
 
 	if (thread_id == 1) {
 		/* Provider thread: feed puzzles to the group */
-		// printf("\tThreadgroup %d - Range is [%d - %d]\n",
-		// 	   tg_id, ta->start, ta->end);
+		printf("\tThreadgroup %d - Range is [%d - %d]\n",
+			   tg_id, ta->start, ta->end);
 
 		for (i = ta->start; i <= ta->end; ++i) {
 			/* Load the puzzle grid reference */
 			common_grids[tg_id] = all_grids[i];
+
+			// printf("\nThreadgroup %d - Solving sudoku %d:\n",
+			// 	   tg_id, i);
+			// display_sudoku(common_grids[tg_id], sudoku_size);
 
 			/* Create the extended grid from the puzzle */
 			extended_grids[tg_id] = extend_grid(all_grids[i],
@@ -76,8 +81,10 @@ void *pthreads_solver(void *arg)
 				break;
 			}
 
-			/* Reset shared_is_changed before signaling */
-			sync->shared_is_changed = 0;
+			/* Reset thread_changed slots before signaling */
+			sync->thread_changed[0] = 0;
+			sync->thread_changed[1] = 0;
+			sync->thread_changed[2] = 0;
 
 			/* Signal all threads that data is ready */
 			pthread_barrier_wait(&sync->barrier_ready);
@@ -87,7 +94,8 @@ void *pthreads_solver(void *arg)
 					       sudoku_size, thread_id,
 					       ta->tg_size,
 					       &sync->barrier_solve,
-					       &sync->shared_is_changed);
+					       sync->thread_changed,
+					       sync->deletions);
 
 			/* Convert extended grid back to regular grid */
 			for (r = 0; r < sudoku_size; r++) {
@@ -103,6 +111,7 @@ void *pthreads_solver(void *arg)
 			// printf("\nThreadgroup %d - Solved sudoku %d:\n",
 			// 	   tg_id, i);
 			// display_sudoku(common_grids[tg_id], sudoku_size);
+			// printf("\n-----------------------\n");
 
 			/* Free extended grid */
 			free_extended_grid(extended_grids[tg_id], sudoku_size);
@@ -130,7 +139,8 @@ void *pthreads_solver(void *arg)
 					       sudoku_size, thread_id,
 					       ta->tg_size,
 					       &sync->barrier_solve,
-					       &sync->shared_is_changed);
+					       sync->thread_changed,
+					       sync->deletions);
 
 			/* Signal that processing is done */
 			pthread_barrier_wait(&sync->barrier_done);
@@ -470,7 +480,11 @@ int main(int argc, char **argv)
 				pthread_barrier_init(&group_syncs[g].barrier_solve,
 							 NULL, tg_size);
 				group_syncs[g].data_is_over = 0;
-				group_syncs[g].shared_is_changed = 0;
+				group_syncs[g].thread_changed[0] = 0;
+				group_syncs[g].thread_changed[1] = 0;
+				group_syncs[g].thread_changed[2] = 0;
+				group_syncs[g].deletions = (int *)calloc(
+					sudoku_size * sudoku_size, sizeof(int));
 				common_grids[g] = NULL;
 				extended_grids[g] = NULL;
 
@@ -504,33 +518,122 @@ int main(int argc, char **argv)
 		for (g = 0; g < n_threadgroups; g++)
 			join_thread_group(thread_groups[g], outputs);
 
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
+		printf("[%3.6f] - Rank %d - Completed processing\n", computation_time, rank);
+		
+		/* ******************************************************************
+		* PREPARE OUTPUT FOR GATHER
+		* ******************************************************************/
+		{
+			int grid_string_len = get_grid_string_size(sudoku_size);
+			int local_output_size_bytes = local_num_lines * grid_string_len;
+			char *curr_out_ptr;
+
+			local_output_buffer = (char *) malloc(local_output_size_bytes);
+			curr_out_ptr = local_output_buffer;
+
+			for (i = 0; i < local_num_lines; ++i) {
+				write_grid_to_string(all_grids[i], curr_out_ptr, sudoku_size);
+				curr_out_ptr += grid_string_len;
+				free_grid(all_grids[i], sudoku_size);
+			}
+		}
+
 		/* Clean up synchronization */
 		for (g = 0; g < n_threadgroups; g++) {
 			pthread_barrier_destroy(&group_syncs[g].barrier_ready);
 			pthread_barrier_destroy(&group_syncs[g].barrier_done);
 			pthread_barrier_destroy(&group_syncs[g].barrier_solve);
+			free(group_syncs[g].deletions);
 		}
 		free(group_syncs);
-		free(common_grids);
+		// free(common_grids);
 		free(extended_grids);
 		free(thread_groups);
+
+		free(all_grids);
+		// free(t_targets);
 
 	} else {
 		/* No work for this rank */
 		local_output_buffer = (char *) malloc(1);
 	}
 
-	if (rank == 0) {
-		clock_gettime(CLOCK_MONOTONIC, &end_time);
-		computation_time = (end_time.tv_sec - start_time.tv_sec) +
-							(end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+	/* ******************************************************************
+	* GATHER RESULTS
+	* ******************************************************************/
+	{
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
+		printf("[%3.6f] - Rank %d - Gathering results\n", computation_time, rank);
 
-		printf("\nTotal computation completed in %.6f seconds.\n",
-				computation_time);
+		int *recvcounts = NULL;
+		int *rdispls = NULL;
+		int my_output_bytes;
 
-		free(all_line_counts);
-		free(all_byte_offsets);
-		free(final_output_buffer);
+		if (rank == 0) {
+			recvcounts = (int *) malloc(size * sizeof(int));
+			rdispls = (int *) malloc(size * sizeof(int));
+		}
+
+		/* All ranks calculate how many bytes they generated */
+		my_output_bytes = (local_threads > 0 && local_num_lines > 0)
+						? (int)(local_num_lines * get_grid_string_size(sudoku_size))
+						: 0;
+
+		/* Gather the output sizes to Rank 0 */
+		MPI_Gather(&my_output_bytes, 1, MPI_INT,
+				   recvcounts, 1, MPI_INT,
+				   0, MPI_COMM_WORLD);
+
+		/* Rank 0 calculates displacements for Gatherv */
+		if (rank == 0) {
+			int current_disp = 0;
+			for (i = 0; i < size; i++) {
+				rdispls[i] = current_disp;
+				current_disp += recvcounts[i];
+			}
+			final_output_buffer = (char *) malloc(current_disp + 1);
+		}
+
+		/* Gather the actual solution strings */
+		MPI_Gatherv(local_output_buffer, my_output_bytes, MPI_CHAR,
+					final_output_buffer, recvcounts, rdispls, MPI_CHAR,
+					0, MPI_COMM_WORLD);
+
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
+		printf("[%3.6f] - Rank %d - Gathering completed\n", computation_time, rank);
+
+		/* ******************************************************************
+		* FINALIZATION (Rank 0)
+		* ******************************************************************/
+		if (rank == 0) {
+			clock_gettime(CLOCK_MONOTONIC, &end_time);
+			computation_time = (end_time.tv_sec - start_time.tv_sec) +
+							   (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+
+			printf("\nTotal computation completed in %.6f seconds.\n",
+				   computation_time);
+
+			/* Check solutions */
+			tot_solved = 0;
+			grid_len = get_grid_string_size(sudoku_size);
+			current_position = final_output_buffer;
+			for (i = 0; i < total_lines; ++i) {
+				if (check_solved_string(current_position, sudoku_size))
+					++tot_solved;
+				current_position += grid_len;
+			}
+			printf("Total correctly solved sudoku puzzles: %d\n", tot_solved);
+
+			free(all_line_counts);
+			free(all_byte_offsets);
+			free(recvcounts);
+			free(rdispls);
+			free(final_output_buffer);
+		}
 	}
 
 	if (local_output_buffer) free(local_output_buffer);
