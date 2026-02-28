@@ -229,6 +229,20 @@ void read_board(FILE *f, struct board *b)
 	}
 }
 
+
+/*
+ * TODO: Factorize by extracting row, column and box iterators
+ * TODO: Use iterator to investigate row, columns and boxes in each investigation step
+ * TODO: Factorize and extract mask applying function as it is common to all investigation functions
+ * TODO: Naked pairs investigation will be implemented as follows --> Create a multipotent mask, use this mask in & operation with all cell-associated mask (same row,col,box), if the mask stays the same at least 2 times then a naked pair is found
+ */
+void incestigate_naked_pair(struct board *b)
+{
+
+    // investigate row column and boxes for naked pairs and apply mask
+    return;
+}
+
 int investigate_row(struct board *b,int r)
 {
     struct cell row[] = b->cells[r];
@@ -323,11 +337,11 @@ int solve_multi_value(int cs)
 int freeze_cell_state(struct board *b)
 {
     int has_changed = 0;
-    for (int bit_toleration = 1;bit_toleration<3;++bit_toleration){
-        for (int i=0;i<MAX_NUM;++i){
-            for (int j=0;j<MAX_NUM;++j){
-                struct cell = b->cells[i][j];
-                int bit_count = popcount(cell.cs)
+    //for (int bit_toleration = 1;bit_toleration<3;++bit_toleration){
+    for (int i=0;i<MAX_NUM;++i){
+        for (int j=0;j<MAX_NUM;++j){
+            struct cell = b->cells[i][j];
+            int bit_count = popcount(cell.cs)
                 if((!cell.has_value) && bit_count == 0){
                     return 0;
                 }else if ((!cell.has_value)  && bit_count == 1){
@@ -335,16 +349,19 @@ int freeze_cell_state(struct board *b)
                     cell.has_value = 1;
                     has_changed = 1;
                     b->unset_cell--;
-                }else if ((!cell.has_value) && bit_count <=bit_toleration){
-                    cell.value = solve_multi_value(cell.cs);
-                    cell.has_value = 1;
-                    has_changed = 1;
-                    b->unset_cell--;
                 }
+            /*
+             * else if ((!cell.has_value) && bit_count <=bit_toleration){
+             *   cell.value = solve_multi_value(cell.cs);
+             *   cell.has_value = 1;
+             *   has_changed = 1;
+             *   b->unset_cell--;
+             *   }
+             */
 
-            }
         }
     }
+    //}
 
     return has_changed;
 }
@@ -359,9 +376,11 @@ int solve_board(struct board *b, int r, int c)
     while (has_changed)
     {
         for (int i=0;i<MAX_NUM;++i){
-            investigate_row();
-            investigate_col();
-            investigate_square();
+            investigate_row(b,i);
+            investigate_col(b,i);
+            investigate_square(b,i);
+            // Check for naked candidates
+            naked_pair_investigation(b)
         }
 
         has_changed = freeze_cell_state(b);
