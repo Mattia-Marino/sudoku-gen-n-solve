@@ -236,9 +236,120 @@ void read_board(FILE *f, struct board *b)
  * TODO: Factorize and extract mask applying function as it is common to all investigation functions
  * TODO: Naked pairs investigation will be implemented as follows --> Create a multipotent mask, use this mask in & operation with all cell-associated mask (same row,col,box), if the mask stays the same at least 2 times then a naked pair is found
  */
-void incestigate_naked_pair(struct board *b)
+void investigate_naked_pair_row(struct board *b,int r)
 {
 
+    // investigate row column and boxes for naked pairs and apply mask
+
+    struct cell row[] = b->cells[r];
+    struct cell r_cell;
+    int prev_mask = 0;
+    int mask = MULTIPOTENT_CANDIDATES;
+    //naked candidate found flag
+    int nc = 0;
+    for (int i=0;i<MAX_NUM;++i)
+    {
+        r_cell = row[i];
+
+        if (r_cell.has_value)
+            continue;
+
+        mask &= r_cell.cs;
+        if (prev_mask == mask && popcount(mask) == 2)
+        {
+            nc = 1;
+            break;
+        }
+        prev_mask = mask;
+    }
+
+    if (! nc)
+        return;
+
+    for (int i=0;i<MAX_NUM;++i){
+        r_cell = row[i];
+        if (! r_cell.has_value && ((r_cell.cs & mask) != 0))
+            r_cell.cs &= mask;
+    }
+
+    return;
+}
+
+void investigate_naked_pair_col(struct board *b,int c)
+{
+    struct cell r_cell;
+    int prev_mask = 0;
+    int mask = MULTIPOTENT_CANDIDATES;
+    //naked candidate found flag
+    int nc = 0;
+    for (int i=0;i<MAX_NUM;++i)
+    {
+        r_cell = b->cells[i][c];
+
+        if (r_cell.has_value)
+            continue;
+
+        mask &= r_cell.cs;
+        if (prev_mask == mask && popcount(mask) == 2)
+        {
+            nc = 1;
+            break;
+        }
+        prev_mask = mask;
+    }
+
+    if (! nc)
+        return;
+
+    for (int i=0;i<MAX_NUM;++i){
+        r_cell = b->cells[i][c];
+        if (! r_cell.has_value && ((r_cell.cs & mask) != 0))
+            r_cell.cs &= mask;
+    }
+    // investigate row column and boxes for naked pairs and apply mask
+    return;
+}
+
+void investigate_naked_pair_box(struct board *b,int sqn)
+{
+    struct cord indexes[2];
+    struct cell r_cell;
+    int prev_mask = 0;
+    int mask = MULTIPOTENT_CANDIDATES;
+    //naked candidate found flag
+    int nc = 0;
+    revert_square(square_n,indexes);
+
+    for (int i=indexes[0].x;i<indexes[1].x;++i)
+    {
+        for (int j=indexes[0].y;j<indexes[1].y;++j)
+        {
+            r_cell = col[i][j];
+            if (r_cell.has_value)
+                continue;
+            mask &= r_cell.cs;
+            if (prev_mask == mask && popcount(mask) == 2)
+            {
+                nc = 1;
+                break;
+            }
+            prev_mask = mask;
+        }
+    }
+
+    if (! nc)
+        return;
+
+
+    for (int i=indexes[0].x;i<indexes[1].x;++i)
+    {
+        for (int j=indexes[0].y;j<indexes[1].y;++j)
+        {
+            r_cell = col[i][j];
+            if (! r_cell.has_value && ((r_cell.cs & mask) != 0))
+                r_cell.cs &= mask;
+        }
+    }
     // investigate row column and boxes for naked pairs and apply mask
     return;
 }
