@@ -16,7 +16,7 @@
  */
 // Multipotent bitarray definition
 //
-const int MULTIPOTENT_CANDIDATES = 1 << (MAX_NUM - 1) | ((1<< (MAX_NUM - 1)) - 1 )
+const int MULTIPOTENT_CANDIDATES = 1 << (MAX_NUM - 1) | ((1<< (MAX_NUM - 1)) - 1 );
 typedef int candidates;
 
 /*
@@ -33,7 +33,7 @@ typedef int candidates;
 struct cell {
 	int has_value;
 	int value;
-	candidates cs;
+	int cs;
 };
 
 struct cords{
@@ -48,39 +48,7 @@ struct cords{
 struct board {
 	int unset_cells;
 	struct cell cells[ARRAY_SIZE][ARRAY_SIZE];
-}
-/*
- * CANDIDATES.
- */
-
-
-/*
- * All candidates start as multipotent.
- */
-
-void init_candidates(candidates *c)
-{
-        *c = MULTIPOTENT_CANDIDATES;
-}
-
-/*
- * Using a candidate number means marking it as used in the array.
- */
-
-void use_candidate(candidates *cp, int num)
-{
-    *cp = set(*cp,num);
-}
-
-/*
- * Restoring a candidate means marking it as unused in the array.
- */
-
-void restore_candidate(candidates *cp, int num)
-{
-    if (test_bit(*cp,num))
-        *cp = invert_bit(*cp,num);
-}
+};
 
 /*
  * Auxiliar. Calculates the square number for the given cell. Squares are
@@ -92,25 +60,14 @@ int square(int row, int col)
 		((col - 1) / SUBDIMENSION);
 }
 
-// Sqaures from 0 to 8 counting from top left to bottom right
+// Squares from 0 to 8 counting from top left to bottom right
 void revert_square(int sqn,struct cords indexes[])
 {
     // lower included --> upper excluded
-    int x_lower =  
-    int x_upper = SUBDIMENSION * ((sqn % SUBDIMENSION) + 1)
         
-    int y_lower =  
-    int y_upper = (sqn/(SUBDIMENSION)) * (SUBDIMENSION - (sqn%SUBDIMENSION) + 1)
+    struct cords lower_cord = {(SUBDIMENSION * ((sqn % SUBDIMENSION )+1)) - SUBDIMENSION,(sqn/(SUBDIMENSION)) * SUBDIMENSION - 1};
 
-    struct cord lower_cord = {
-        (SUBDIMENSION * ((sqn % SUBDIMENSION )+1)) - SUBDIMENSION,
-        (sqn/(SUBDIMENSION)) * SUBDIMENSION - 1
-    }
-
-    struct cord upper_cord = {
-        SUBDIMENSION * ((sqn % SUBDIMENSION) + 1),
-        (sqn/(SUBDIMENSION)) * (SUBDIMENSION - (sqn%SUBDIMENSION) + 1)
-    }
+    struct cords upper_cord = {SUBDIMENSION * ((sqn % SUBDIMENSION) + 1),(sqn/(SUBDIMENSION)) * (SUBDIMENSION - (sqn%SUBDIMENSION) + 1)};
 
     indexes[0] = lower_cord;
     indexes[1] = upper_cord;
@@ -438,13 +395,6 @@ int investigate_square(struct board *b,int square_n)
     return 1;
 }
 
-//function need to implement tie breaker algorithm when more than a single value is a candidate for this cell 
-
-int solve_multi_value(int cs)
-{
-    return 1;
-}
-
 int freeze_cell_state(struct board *b)
 {
     int has_changed = 0;
@@ -491,7 +441,12 @@ int solve_board(struct board *b, int r, int c)
             investigate_col(b,i);
             investigate_square(b,i);
             // Check for naked candidates
-            naked_pair_investigation(b)
+        }
+        for (int i=0;i<MAX_NUM;++i){
+            investigate_naked_pair_row(b,i);
+            investigate_naked_pair_col(b,i);
+            investigate_naked_pair_box(b,i);
+            // Check for naked candidates
         }
 
         has_changed = freeze_cell_state(b);
