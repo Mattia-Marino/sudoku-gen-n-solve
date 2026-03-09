@@ -8,11 +8,13 @@ PTHREAD_FLAG := -lpthread
 # Program names
 SERIAL_PROGRAM := serial_sudoku_solver
 PARALLEL_PROGRAM_V1 := parallel_sudoku_solver_v1
+PARALLEL_PROGRAM_V2 := parallel_sudoku_solver_v2
 
 # Allow specifying output directory from top-level Makefile
 BINDIR := .
 SERIAL_OUTPUT := $(BINDIR)/$(SERIAL_PROGRAM)
 PARALLEL_OUTPUT_V1 := $(BINDIR)/$(PARALLEL_PROGRAM_V1)
+PARALLEL_OUTPUT_V2 := $(BINDIR)/$(PARALLEL_PROGRAM_V2)
 
 # Source files organization
 SRC_DIR := src
@@ -22,6 +24,7 @@ PTHREADS_DIR := pthreads
 SERIAL_DIR := serial
 COMMON_DIR := common
 PARALLEL_DIR_V1 := parallel_v1
+PARALLEL_DIR_V2 := parallel_v2
 
 # Serial objects
 SERIAL_OBJS := $(BUILD_DIR)/$(SERIAL_DIR)/main.o \
@@ -38,6 +41,15 @@ PARALLEL_OBJS_V1 := $(BUILD_DIR)/$(PARALLEL_DIR_V1)/main.o \
     $(BUILD_DIR)/$(PTHREADS_DIR)/commons.o \
     $(BUILD_DIR)/$(SERIAL_DIR)/solver.o
 
+PARALLEL_OBJS_V2 := $(BUILD_DIR)/$(PARALLEL_DIR_V2)/main.o \
+    $(BUILD_DIR)/$(COMMON_DIR)/bitarray.o \
+    $(BUILD_DIR)/$(COMMON_DIR)/sudoku_utils.o \
+    $(BUILD_DIR)/$(PTHREADS_DIR)/pthread_groups.o \
+    $(BUILD_DIR)/$(PTHREADS_DIR)/queue.o \
+    $(BUILD_DIR)/$(PTHREADS_DIR)/commons.o \
+    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
+    $(BUILD_DIR)/$(PARALLEL_DIR_V2)/solver.o
+
 
 # Handle DEBUG flag from parent Makefile
 ifdef DEBUG
@@ -47,17 +59,18 @@ else
     CFLAGS += -g
 endif
 
-all: clean serial parallel_v1
+all: clean serial parallel_v1 parallel_v2
 
 serial: $(SERIAL_OUTPUT)
 parallel_v1: $(PARALLEL_OUTPUT_V1)
+parallel_v2: $(PARALLEL_OUTPUT_V2)
 
 # Build configurations
 debug: CFLAGS += -g -DDEBUG
-debug: clean serial parallel_v1
+debug: clean serial parallel_v1 parallel_v2
 
 # Make sure build directories exist
-$(BUILD_DIR) $(BUILD_DIR)/$(COMMON_DIR) $(BUILD_DIR)/$(PTHREADS_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR_V1):
+$(BUILD_DIR) $(BUILD_DIR)/$(COMMON_DIR) $(BUILD_DIR)/$(PTHREADS_DIR) $(BUILD_DIR)/$(SERIAL_DIR) $(BUILD_DIR)/$(PARALLEL_DIR_V1) $(BUILD_DIR)/$(PARALLEL_DIR_V2):
 	mkdir -p $@
 
 # Pattern rule for common object files
@@ -76,6 +89,10 @@ $(BUILD_DIR)/$(SERIAL_DIR)/%.o: $(SRC_DIR)/$(SERIAL_DIR)/%.c | $(BUILD_DIR)/$(SE
 $(BUILD_DIR)/$(PARALLEL_DIR_V1)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V1)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V1)
 	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
+# Pattern rule for parallel object files (V2)
+$(BUILD_DIR)/$(PARALLEL_DIR_V2)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V2)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V2)
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+
 # Link the serial program
 $(SERIAL_OUTPUT): $(SERIAL_OBJS)
 	@mkdir -p "$(BINDIR)"
@@ -86,12 +103,19 @@ $(PARALLEL_OUTPUT_V1): $(PARALLEL_OBJS_V1)
 	@mkdir -p "$(BINDIR)"
 	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
+# Link the parallel program (V2)
+$(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
+	@mkdir -p "$(BINDIR)"
+	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+
 # Clean build files
 clean:
 	rm -f $(BINDIR)/$(SERIAL_PROGRAM)
 	rm -f $(BINDIR)/$(PARALLEL_PROGRAM_V1)
+	rm -f $(BINDIR)/$(PARALLEL_PROGRAM_V2)
 	rm -f $(SERIAL_OBJS) $(SERIAL_OBJS:.o=.d)
 	rm -f $(PARALLEL_OBJS_V1) $(PARALLEL_OBJS_V1:.o=.d)
+	rm -f $(PARALLEL_OBJS_V2) $(PARALLEL_OBJS_V2:.o=.d)
 	rm -rf $(BUILD_DIR)
 
 # Show help information
@@ -109,4 +133,4 @@ help:
 -include $(SERIAL_OBJS:.o=.d)
 
 # Mark targets that don't produce files with their names
-.PHONY: all serial parallel_v1 clean help
+.PHONY: all serial parallel_v1 parallel_v2 clean help
