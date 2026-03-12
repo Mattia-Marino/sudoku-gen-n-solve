@@ -12,18 +12,18 @@
 // DONE
 int sudoku_solver(int **grid, int n)
 {
-    int i, j; /* Loop variables */
+	int i, j; /* Loop variables */
 	int is_changed; /* Flag to check if any changes are made */
 	int depth;
 	int max_depth;
-    struct board *b;
+	struct board *b;
 
-    int ***already_propagated_rows;
+	int ***already_propagated_rows;
 	int ***already_propagated_columns;
 	int ***already_propagated_boxes;
 	int **selected_propagated;
 
-        /* TODO: Add checks for errors */
+	/* TODO: Add checks for errors */
 	max_depth = (int)floor((double)n / 2);
 	DPRINTF("Max depth: %d\n\n", max_depth);
 	already_propagated_rows = (int ***)malloc(max_depth * sizeof(int **));
@@ -55,8 +55,8 @@ int sudoku_solver(int **grid, int n)
 
 	/* Create an extended grid */
 	b = init_board(n);
-        populate_board(b, grid);
-        DPRINT_BOARD(b);
+	populate_board(b, grid);
+	DPRINT_BOARD(b);
 
 	/* Solve the Sudoku puzzle using constraint propagation */
 	do {
@@ -98,7 +98,7 @@ int sudoku_solver(int **grid, int n)
 	board_to_grid(b, grid);
 
 	/* Free everything */
-        free_board(b);
+	free_board(b);
 	free_propagation_matrix(already_propagated_rows, n);
 	free_propagation_matrix(already_propagated_columns, n);
 	free_propagation_matrix(already_propagated_boxes, n);
@@ -113,19 +113,19 @@ struct board *init_board(int n)
 	int i, j;
 	struct board *b;
 
-    //const int MULTIPOTENT_CANDIDATES = 1 << (n - 1) | ((1<< (n - 1)) - 1 );
-    b = (struct board *) malloc(sizeof(struct board));
-    b->n = n;
-    b->cells = (struct cell **) malloc(n * sizeof(struct cell*));
+	//const int MULTIPOTENT_CANDIDATES = 1 << (n - 1) | ((1<< (n - 1)) - 1 );
+	b = (struct board *) malloc(sizeof(struct board));
+	b->n = n;
+	b->cells = (struct cell **) malloc(n * sizeof(struct cell*));
 
 	for (i = 0; i < n; ++i) {
 		b->cells[i] = (struct cell *) malloc(n * sizeof(struct cell));
 		for (j = 0; j < n; ++j)
-        {
+		{
 			b->cells[i][j].candidates = 0;
-            b->cells[i][j].has_value = 0;
-            b->cells[i][j].value = 0;
-        }
+			b->cells[i][j].has_value = 0;
+			b->cells[i][j].value = 0;
+		}
 	}
 
 	return b;
@@ -136,17 +136,28 @@ void populate_board(struct board *b, int **grid)
 {
 	int i, j, k;
 	int n = b->n;
+	// const unsigned int MULTIPOTENT_CANDIDATES = 1 << (n - 1) | ((1<< (n - 1)) - 1 );
+
+	int x = 0;
+
+	for (k = 1; k <= n; ++k)
+		x = set(x, k);
 
 	for (i = 0; i < n; ++i) {
 		for (j = 0; j < n; ++j) {
-			if (grid[i][j] != 0) {
-				b->cells[i][j].has_value = 1;
-                b->cells[i][j].value = grid[i][j];
-                b->cells[i][j].candidates = set(0, grid[i][j]);
-			} 
+			if (grid[i][j] == 0) {
+				// b->cells[i][j].candidates = 0;
+				// b->cells[i][j].candidates = MULTIPOTENT_CANDIDATES;
+				b->cells[i][j].candidates = x;
+				// for (k = 1; k <= n; ++k)
+				// 	b->cells[i][j].candidates = set(b->cells[i][j].candidates, k);
+			} else {
+				b->cells[i][j].candidates = set(0, grid[i][j]);
+			}
 		}
 	}
 }
+
 // DONE
 void print_board(const struct board *b)
 {
@@ -155,8 +166,9 @@ void print_board(const struct board *b)
 
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
-            printf("%d", b->cells[i][j].value);
-
+			for (k = 32; k >= 1; --k)
+				printf("%d", test_bit(b->cells[i][j].candidates, k) ? 1 : 0);
+			
 			if (j < n - 1)
 				printf(" ");
 		}
@@ -174,8 +186,7 @@ void board_to_grid(const struct board *b, int **grid)
 		for (j = 0; j < n; j++) {
 			if (is_one_bit(b->cells[i][j].candidates)) {
 				/* Exactly one candidate: find which number */
-                b->cells[i][j].value=outer_bit_pos(b->cells[i][j].candidates);
-                b->cells[i][j].has_value = 1;
+				grid[i][j] = outer_bit_pos(b->cells[i][j].candidates);
 			} else {
 				/* Multiple candidates or none: unsolved */
 				grid[i][j] = 0;
@@ -234,13 +245,13 @@ int naked_candidates_rows(struct board *b, int n,
 	struct cell cell;
 	int candidates; /* Bitarray for the union of candidates in the tuple */
 	struct coordinates *coord;
-    int n_candidates;
+	int n_candidates;
 
 	DPRINTF("\nElimination of naked candidates (row) at depth %d\n", depth);
 
 	/* Set coordinates array to length depth */
 	coord = (struct coordinates *)malloc(depth *
-					     sizeof(struct coordinates));
+						 sizeof(struct coordinates));
 	if (coord == NULL) {
 		fprintf(stderr, "Memory allocation failed\n");
 		return -1; /* Indicate error */
@@ -252,8 +263,8 @@ int naked_candidates_rows(struct board *b, int n,
 	for (i = 0; i < n; ++i) {
 		for (j = 0; j < n; ++j) {
 			cell = b->cells[i][j];
-            n_candidates = popcount(cell.candidates);
-            
+			n_candidates = popcount(cell.candidates);
+			
 
 			DPRINTF("\tAt cell [%d][%d]: popcount=%d\n",
 				i + 1, j + 1, popcount(cell.candidates));
@@ -382,13 +393,13 @@ int naked_candidates_columns(struct board *b, int n,
 	int n_difference;
 	struct cell cell;
 	int candidates;
-    int n_candidates;
+	int n_candidates;
 	struct coordinates *coord;
 
 	DPRINTF("\nElimination of naked candidates (col) at depth %d\n", depth);
 
 	coord = (struct coordinates *)malloc(depth *
-					     sizeof(struct coordinates));
+						 sizeof(struct coordinates));
 	if (coord == NULL) {
 		fprintf(stderr, "Memory allocation failed\n");
 		return -1;
@@ -400,7 +411,7 @@ int naked_candidates_columns(struct board *b, int n,
 	for (j = 0; j < n; ++j) {
 		for (i = 0; i < n; ++i) {
 			cell = b->cells[i][j];
-            n_candidates = popcount(cell.candidates);
+			n_candidates = popcount(cell.candidates);
 
 			if (cell.candidates == 0)
 				continue;
@@ -483,7 +494,7 @@ int naked_candidates_boxes(struct board *b, int n,
 	int n_difference;
 	struct cell  cell;
 	int candidates;
-    int n_candidates;
+	int n_candidates;
 	int row, col, krow, kcol;
 	int start; /* Flag: found the starting cell in the scan */
 	struct coordinates *coord;
@@ -493,7 +504,7 @@ int naked_candidates_boxes(struct board *b, int n,
 	box_size = (int)sqrt(n);
 
 	coord = (struct coordinates *)malloc(depth *
-					     sizeof(struct coordinates));
+						 sizeof(struct coordinates));
 	if (coord == NULL) {
 		fprintf(stderr, "Memory allocation failed\n");
 		return -1;
@@ -510,7 +521,7 @@ int naked_candidates_boxes(struct board *b, int n,
 					row = bi * box_size + ci;
 					col = bj * box_size + cj;
 					cell = b->cells[row][col];
-                    n_candidates = popcount(cell.candidates);
+					n_candidates = popcount(cell.candidates);
 
 					if (cell.candidates == 0)
 						continue;
@@ -534,14 +545,14 @@ int naked_candidates_boxes(struct board *b, int n,
 					 * (after the current one) */
 					start = 0;
 					for (ki = 0; ki < box_size &&
-					     remaining_nodes > 0; ++ki) {
+						 remaining_nodes > 0; ++ki) {
 						for (kj = 0; kj < box_size &&
-						     remaining_nodes > 0; ++kj) {
+							 remaining_nodes > 0; ++kj) {
 							/* Skip cells up to and
 							 * including (ci, cj) */
 							if (!start) {
 								if (ki == ci &&
-								    kj == cj)
+									kj == cj)
 									start = 1;
 								continue;
 							}
@@ -557,7 +568,7 @@ int naked_candidates_boxes(struct board *b, int n,
 								& ~candidates);
 
 							if ((popcount(candidates) +
-							     n_difference) <= depth) {
+								 n_difference) <= depth) {
 								candidates |=
 									b->cells[krow][kcol].candidates;
 
@@ -631,7 +642,7 @@ void propagate_row(struct board *b, int n, struct coordinates *coord,
 
 // DONE
 void propagate_column(struct board *b, int n, struct coordinates *coord,
-		      int n_coordinates, int value)
+			  int n_coordinates, int value)
 {
 	int i, j;
 	int col = coord[0].column;
@@ -673,7 +684,7 @@ void propagate_box(struct board *b, int n, struct coordinates *coord,
 			skip = 0;
 			for (k = 0; k < n_coordinates; ++k) {
 				if (i == coord[k].row &&
-				    j == coord[k].column) {
+					j == coord[k].column) {
 					skip = 1;
 					break;
 				}
