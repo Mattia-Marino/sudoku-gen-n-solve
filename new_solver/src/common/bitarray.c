@@ -66,6 +66,7 @@ int outer_bit_pos(int a)
         if ((mask & (*f)(a,i)) == mask)
             return lt_half?i:(BITARRAY_SIZE-i);
     }
+    return -1;
 }
 
 

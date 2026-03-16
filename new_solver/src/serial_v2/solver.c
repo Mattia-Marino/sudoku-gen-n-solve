@@ -413,7 +413,7 @@ int naked_candidates_columns(struct board *b, int n,
 			cell = b->cells[i][j];
 			n_candidates = popcount(cell.candidates);
 
-			if (cell.candidates == 0)
+			if (n_candidates == 0)
 				continue;
 			if (n_candidates > depth)
 				continue;
@@ -438,7 +438,7 @@ int naked_candidates_columns(struct board *b, int n,
 
 				n_difference = popcount(b->cells[k][j].candidates & ~candidates);
 
-				if ((popcount(candidates) + n_difference) <= depth) {
+				if ((n_candidates + n_difference) <= depth) {
 					candidates |= b->cells[k][j].candidates;
 
 					coord[l].row = k;
@@ -523,7 +523,7 @@ int naked_candidates_boxes(struct board *b, int n,
 					cell = b->cells[row][col];
 					n_candidates = popcount(cell.candidates);
 
-					if (cell.candidates == 0)
+					if (n_candidates == 0)
 						continue;
 					if (n_candidates > depth)
 						continue;

@@ -1,7 +1,7 @@
 #ifndef _BITARRAY_
 #define _BITARRAY_
 
-#define BITARRAY_SIZE sizeof(int) * 8
+#define BITARRAY_SIZE (int)(sizeof(int) * 8)
 
 typedef int (*shift_func) (int, int);
 
