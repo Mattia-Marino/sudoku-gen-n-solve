@@ -110,7 +110,7 @@ $(BUILD_DIR)/$(SERIAL_V2_DIR)/%.o: $(SRC_DIR)/$(SERIAL_V2_DIR)/%.c | $(BUILD_DIR
 	
 # Pattern rule for serial_v3 directory object files
 $(BUILD_DIR)/$(SERIAL_V3_DIR)/%.o: $(SRC_DIR)/$(SERIAL_V3_DIR)/%.c | $(BUILD_DIR)/$(SERIAL_V3_DIR)
-	$(CC) $(CFLAGS) -g -DDEBUG -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(CC) $(CFLAGS) -g  -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V1)
 $(BUILD_DIR)/$(PARALLEL_DIR_V1)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V1)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V1)

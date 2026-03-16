@@ -81,6 +81,7 @@ void populate_board(struct board *b,int **grid)
 				b->cells[i][j].candidates = set(0, grid[i][j]-1);
                 b->cells[i][j].value = grid[i][j];
                 b->cells[i][j].has_value = 1;
+                b->unset_cells--;
 			}
 		}
 	}
@@ -132,7 +133,7 @@ void free_board(struct board *b)
 	free(b);
 }
 
-void apply_nh_masks(struct cell *cells, struct naked_masks nm){
+void __apply_nh_masks(struct cell *cells, struct naked_masks nm){
     int mask = nm.n_pair;
     int h_pair = nm.h_pair;
     int h_single = nm.h_single;
@@ -248,6 +249,38 @@ struct naked_masks naked_investigator(struct cell *cells){
 
 }
 
+void apply_nh_masks(struct cell* cell,struct naked_masks masks){
+    int mask = masks.n_pair;
+    int h_pair = masks.h_pair;
+    int h_single = masks.h_single;
+
+    if (cell->has_value)
+        return;
+
+    if (popcount(cell->candidates) < 2)
+        return;
+
+    // Resolve hidden pairs
+    if ((cell->candidates & h_pair) != 0){
+        DPRINTF("Applying hidden pair mask to candidates %d\n",cell->candidates);
+        cell->candidates &= h_pair;
+    }
+    // Resolve hidden singles
+    if ((cell->candidates & h_single) != 0){
+        DPRINTF("Applying hidden single mask to candidates %d\n",cell->candidates);
+        cell->candidates &= h_single;
+    }
+
+    //Resolve naked pairs
+    if ((cell->candidates & mask) != 0){
+        DPRINTF("Old cell mask %d\n",cell->candidates);
+        cell->candidates &= mask;
+        DPRINTF("New cell mask %d\n",cell->candidates);
+    }
+    return;
+
+}
+
 //DONE
 void investigate_naked_pair_row(struct board *b,int r)
 {
@@ -256,24 +289,54 @@ void investigate_naked_pair_row(struct board *b,int r)
 
     struct cell *row = b->cells[r];
     struct naked_masks masks = naked_investigator(row);
-    apply_nh_masks(row,masks);
+    __apply_nh_masks(row,masks);
     return;
 }
 
 //DONE
 void investigate_naked_pair_col(struct board *b,int c)
 {
+
+    struct cell *cell;
     struct cell r_cell;
-    int mask;
+    int mask = 0;
     //naked candidate found flag
     int nc = 0;
     int pairs_array[MAX_NUM];
     int pairs_size = 0;
+    // more than once mask
+    int m_once = 0;
+    int odds = 0;
+    int once = 0;
+    // hidden sets masks
+    int h_pairs = 0;
+    int h_pairs_count = 0;
+    int bit_count = 0;
+
+    int set_1 = 0;
+    int set_2 = 0;
+    int set_3 = 0;
+
     for (int i=0;i<MAX_NUM;++i)
     {
         r_cell = b->cells[i][c];
+        bit_count = popcount(r_cell.candidates);
 
-        if (r_cell.has_value || popcount(r_cell.candidates) != 2)
+        if (r_cell.has_value)
+            continue;
+
+        set_3 |= (r_cell.candidates & set_2);
+        set_2 |= (r_cell.candidates & set_1);
+        set_1 |= (r_cell.candidates);
+
+        m_once |= (odds & r_cell.candidates);
+        odds ^= r_cell.candidates;
+        DPRINTF("Current [%d] candidates %d\n",i,r_cell.candidates);
+
+        if (nc)
+            continue;
+
+        if (bit_count != 2)
             continue;
 
         for (int j=0;j<pairs_size;++j){
@@ -283,26 +346,36 @@ void investigate_naked_pair_col(struct board *b,int c)
                 break;
             }
         }
-        if (nc)
-            break;
 
         pairs_array[pairs_size] = r_cell.candidates;
         pairs_size++;
     }
 
-    if (! nc)
-        return;
-    DPRINTF("Calculated column naked pair mask %d\n",mask);
-    //Invert mask for merge
     mask = ~mask;
+    once = (odds & (~set_2));
+    h_pairs = (set_2 & ~set_3);
+
+    struct naked_masks nm = {once,h_pairs,mask};
+
+    if (popcount(h_pairs) < 2){
+        nm.h_pair = 0;
+    }
+    
+    for (int i=0;i<MAX_NUM && h_pairs_count < 2;++i)
+    {
+        if ((h_pairs & b->cells[i][c].candidates) == h_pairs)
+        {
+            h_pairs_count++;
+        }
+    }
+
+    if ( h_pairs_count < 2)
+        nm.h_pair = 0;
+    
 
     for (int i=0;i<MAX_NUM;++i){
-        r_cell = b->cells[i][c];
-        if (! r_cell.has_value && ((r_cell.candidates & mask) != 0)){
-            DPRINTF("Old cell [%d][%d] mask %d\n",i,c,b->cells[i][c].candidates);
-            b->cells[i][c].candidates &= mask;
-            DPRINTF("New cell [%d][%d] mask %d\n",i,c,b->cells[i][c].candidates);
-        }
+        cell = b->cells[i] + c;
+        apply_nh_masks(cell,nm);
     }
     // investigate row column and boxes for naked pairs and apply mask
     return;
@@ -310,13 +383,26 @@ void investigate_naked_pair_col(struct board *b,int c)
 
 void investigate_naked_pair_box(struct board *b,int sqn)
 {
-    struct cords indexes[2];
+    struct cell *cell;
     struct cell r_cell;
-    int mask;
+    struct cords indexes[2];
+    int mask = 0;
     //naked candidate found flag
     int nc = 0;
     int pairs_array[MAX_NUM];
     int pairs_size = 0;
+    // more than once mask
+    int m_once = 0;
+    int odds = 0;
+    int once = 0;
+    // hidden sets masks
+    int h_pairs = 0;
+    int h_pairs_count = 0;
+    int bit_count = 0;
+
+    int set_1 = 0;
+    int set_2 = 0;
+    int set_3 = 0;
     revert_square(sqn,indexes);
 
     for (int i=indexes[0].x;i<indexes[1].x;++i)
@@ -324,46 +410,72 @@ void investigate_naked_pair_box(struct board *b,int sqn)
         for (int j=indexes[0].y;j<indexes[1].y;++j)
         {
             r_cell = b->cells[i][j];
-            if (r_cell.has_value || popcount(r_cell.candidates) != 2)
+            bit_count = popcount(r_cell.candidates);
+
+            if (r_cell.has_value)
                 continue;
 
-            for (int k=0;k<pairs_size;++k){
-                if (pairs_array[k] == r_cell.candidates){
+            set_3 |= (r_cell.candidates & set_2);
+            set_2 |= (r_cell.candidates & set_1);
+            set_1 |= (r_cell.candidates);
+
+            m_once |= (odds & r_cell.candidates);
+            odds ^= r_cell.candidates;
+            DPRINTF("Current [%d] candidates %d\n",i,r_cell.candidates);
+
+            if (nc)
+                continue;
+
+            if (bit_count != 2)
+                continue;
+
+            for (int j=0;j<pairs_size;++j){
+                if (pairs_array[j] == r_cell.candidates){
                     nc = 1;
                     mask = r_cell.candidates;
                     break;
                 }
             }
-            if (nc)
-                break;
 
             pairs_array[pairs_size] = r_cell.candidates;
             pairs_size++;
         }
+        
     }
 
-    if (! nc)
-        return;
-
-
-    DPRINTF("Calculated box naked pair mask %d\n",mask);
-    //Invert mask for merge
     mask = ~mask;
+    once = (odds & (~set_2));
+    h_pairs = (set_2 & ~set_3);
+
+    struct naked_masks nm = {once,h_pairs,mask};
+
+    if (popcount(h_pairs) < 2){
+        nm.h_pair = 0;
+    }
+    
     for (int i=indexes[0].x;i<indexes[1].x;++i)
     {
         for (int j=indexes[0].y;j<indexes[1].y;++j)
         {
-            r_cell = b->cells[i][j];
-            if (! r_cell.has_value && ((r_cell.candidates & mask) != 0)){
-                DPRINTF("Old cell [%d][%d] mask %d\n",i,j,b->cells[i][j].candidates);
-                b->cells[i][j].candidates &= mask;
-                DPRINTF("New cell [%d][%d] mask %d\n",i,j,b->cells[i][j].candidates);
-
+            if ((h_pairs & b->cells[i][j].candidates) == h_pairs)
+            {
+                h_pairs_count++;
             }
         }
     }
-    // investigate row column and boxes for naked pairs and apply mask
-    return;
+
+    if ( h_pairs_count < 2)
+        nm.h_pair = 0;
+    
+    for (int i=indexes[0].x;i<indexes[1].x;++i)
+    {
+        for (int j=indexes[0].y;j<indexes[1].y;++j)
+        {
+            cell = b->cells[i] + j;
+            apply_nh_masks(cell,nm);
+        }
+    }
+    return ;
 }
 
 
