@@ -14,7 +14,11 @@ struct cell {
 
 struct board {
 	int unset_cells;
+    pthread_mutex_t change_lock;
+    int has_changed;
     struct RW_monitor *counter_monitor;
+    pthread_barrier_t investigation_barrier;
+    pthread_barrier_t freeze_barrier;
 	struct cell **cells;
 };
 

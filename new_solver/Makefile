@@ -77,7 +77,6 @@ PARALLEL_OBJS_V3 := $(BUILD_DIR)/$(PARALLEL_DIR_V3)/main.o \
     $(BUILD_DIR)/$(PTHREADS_DIR)/queue.o \
     $(BUILD_DIR)/$(PTHREADS_DIR)/commons.o \
     $(BUILD_DIR)/$(PTHREADS_DIR)/monitors.o \
-    $(BUILD_DIR)/$(SERIAL_DIR)/solver.o \
     $(BUILD_DIR)/$(PARALLEL_DIR_V3)/solver.o
 
 # Handle DEBUG flag from parent Makefile
@@ -135,7 +134,7 @@ $(BUILD_DIR)/$(PARALLEL_DIR_V2)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V2)/%.c | $(BUILD
 
 # Pattern rule for parallel object files (V3)
 $(BUILD_DIR)/$(PARALLEL_DIR_V3)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V3)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V3)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(CC) $(PTHREAD_FLAG)  $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Link the serial program
 $(SERIAL_OUTPUT): $(SERIAL_OBJS)
@@ -165,7 +164,7 @@ $(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
 # Link the parallel program (V3)
 $(PARALLEL_OUTPUT_V3): $(PARALLEL_OBJS_V3)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(CC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
 
 # Clean build files
 clean:

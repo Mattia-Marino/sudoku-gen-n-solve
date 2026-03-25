@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #include "../../include/debug.h"
-#include "../../include/solver_v3.h"
+#include "../../include/solver_parallel_v3.h"
 #include "../../include/bitarray.h"
 
 #define SUBDIMENSION	(3)

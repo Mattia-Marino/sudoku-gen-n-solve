@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #include "../../include/debug.h"
-#include "../../include/solver_v3.h"
+#include "../../include/solver_parallel_v3.h"
 #include "../../include/bitarray.h"
 // Include rw monitors for cell access
 #include "../../include/monitors.h"
@@ -54,9 +54,21 @@ struct board *init_board()
 {
 	int i,j;
 	struct board *b;
+    pthread_barrier_t investigation_barrier;
+    pthread_barrier_t freeze_barrier;
+    pthread_mutex_t change_lock;
 	b = (struct board *) malloc(sizeof(struct board));
 	b->unset_cells = TOTAL_NUMS * TOTAL_NUMS;
 	b->cells = (struct cell **) malloc(MAX_NUM * sizeof(struct cell*));
+    b->counter_monitor = (struct RW_monitor*) malloc(sizeof(struct RW_monitor));
+    b->has_changed = 0;
+    pthread_barrier_init(&investigation_barrier,NULL,3);
+    pthread_barrier_init(&freeze_barrier,NULL,3);
+    pthread_mutex_init(&change_lock,NULL);
+    b->investigation_barrier = investigation_barrier;
+    b->freeze_barrier = freeze_barrier;
+    b->change_lock = change_lock;
+    init_rw_monitor(b->counter_monitor);
 
 	for (i = 0; i < MAX_NUM; ++i) {
 		b->cells[i] = (struct cell *) malloc(MAX_NUM * sizeof(struct cell));
@@ -65,9 +77,9 @@ struct board *init_board()
 			b->cells[i][j].value = 0;
 			b->cells[i][j].candidates = MULTIPOTENT_CANDIDATES;
             // Monitors initialization
-			b->cells[i][j].cs_monitor = malloc(sizeof(RW_monitor));
+			b->cells[i][j].cs_monitor = malloc(sizeof(struct RW_monitor));
             init_rw_monitor(b->cells[i][j].cs_monitor);
-			b->cells[i][j].val_monitor = malloc(sizeof(RW_monitor));
+			b->cells[i][j].val_monitor = malloc(sizeof(struct RW_monitor));
             init_rw_monitor(b->cells[i][j].val_monitor);
 		}
 	}
@@ -131,7 +143,7 @@ void free_board(struct board *b)
 {
 	int i;
 
-	for (i = 0; i < MAX_NUM; i++)
+	for (i = 0; i < MAX_NUM; i++){
         for (int j =0; j<MAX_NUM;++j){
             rw_monitor_destroy(b->cells[i][j].cs_monitor);
             rw_monitor_destroy(b->cells[i][j].val_monitor);
@@ -139,7 +151,12 @@ void free_board(struct board *b)
             free(b->cells[i][j].val_monitor);
         }
 		free(b->cells[i]);
+    }
 
+    rw_monitor_destroy(b->counter_monitor);
+    pthread_barrieri_destroy(b->freeze_barrier);
+    pthread_barrieri_destroy(b->investigation_barrier);
+    free(b->counter_monitor);
 	free(b->cells);
 	free(b);
 }
@@ -152,15 +169,23 @@ void __apply_nh_masks(struct cell *cells, struct naked_masks nm){
     DPRINTF("Retrieved hidden single mask %d , hidden pair mask %d and naked pair mask %d\n",h_single,h_pair,mask);
     for (int i=0;i<MAX_NUM;++i){
         rw_monitor_request_write(cells[i].cs_monitor);
+        DPRINTF("Write lock acquired\n");
         rw_monitor_request_read(cells[i].val_monitor);
+        DPRINTF("Read lock acquired\n");
 
-        if (cells[i].has_value)
+        if (cells[i].has_value){
+            rw_monitor_release_write(cells[i].cs_monitor);
+            rw_monitor_release_read(cells[i].val_monitor);
             continue;
+        }
 
         rw_monitor_release_read(cells[i].val_monitor);
 
         if (popcount(cells[i].candidates) < 2)
+        {
+            rw_monitor_release_write(cells[i].cs_monitor);
             continue;
+        }
 
         // Resolve hidden pairs
         if ((cells[i].candidates & h_pair) != 0){
@@ -212,8 +237,11 @@ struct naked_masks naked_investigator(struct cell *cells){
         r_cell = cells[i];
         bit_count = popcount(r_cell.candidates);
 
-        if (r_cell.has_value)
+        if (r_cell.has_value){
+            rw_monitor_release_read(cells[i].cs_monitor);
+            rw_monitor_release_read(cells[i].val_monitor);
             continue;
+        }
 
         rw_monitor_release_read(cells[i].val_monitor);
 
@@ -225,11 +253,15 @@ struct naked_masks naked_investigator(struct cell *cells){
         odds ^= r_cell.candidates;
         DPRINTF("Current [%d] candidates %d\n",i,r_cell.candidates);
 
-        if (nc)
+        if (nc){
+            rw_monitor_release_read(cells[i].cs_monitor);
             continue;
+        }
 
-        if (bit_count != 2)
+        if (bit_count != 2){
+            rw_monitor_release_read(cells[i].cs_monitor);
             continue;
+        }
 
         for (int j=0;j<pairs_size;++j){
             if (pairs_array[j] == r_cell.candidates){
@@ -246,9 +278,7 @@ struct naked_masks naked_investigator(struct cell *cells){
 
     mask = ~mask;
     // Find candidates only repeted once (hidden single)
-    // m_once &= mask;
     once = (odds & (~set_2));
-    // once = popcount(once) != 1 ? MULTIPOTENT_CANDIDATES : once;
     h_pairs = (set_2 & ~set_3);
     struct naked_masks nm = {once,h_pairs,mask};
     if (popcount(h_pairs) < 2){
@@ -278,15 +308,19 @@ void apply_nh_masks(struct cell* cell,struct naked_masks masks){
     int h_pair = masks.h_pair;
     int h_single = masks.h_single;
 
-    rw_monitor_request_read(cells->val_monitor);
-    if (cell->has_value)
+    rw_monitor_request_read(cell->val_monitor);
+    if (cell->has_value){
+        rw_monitor_release_read(cell->val_monitor);
         return;
-    rw_monitor_release_read(cells->val_monitor);
+        }
+    rw_monitor_release_read(cell->val_monitor);
 
-    if (popcount(cell->candidates) < 2)
+    rw_monitor_request_write(cell->cs_monitor);
+    if (popcount(cell->candidates) < 2){
+        rw_monitor_release_write(cell->cs_monitor);
         return;
+    }
 
-    rw_monitor_request_write(cells->cs_monitor);
     // Resolve hidden pairs
     if ((cell->candidates & h_pair) != 0){
         DPRINTF("Applying hidden pair mask to candidates %d\n",cell->candidates);
@@ -304,7 +338,7 @@ void apply_nh_masks(struct cell* cell,struct naked_masks masks){
         cell->candidates &= mask;
         DPRINTF("New cell mask %d\n",cell->candidates);
     }
-    rw_monitor_release_write(cells->cs_monitor);
+    rw_monitor_release_write(cell->cs_monitor);
     return;
 
 }
@@ -352,8 +386,11 @@ void investigate_naked_pair_col(struct board *b,int c)
         r_cell = b->cells[i][c];
         bit_count = popcount(r_cell.candidates);
 
-        if (r_cell.has_value)
+        if (r_cell.has_value){
+            rw_monitor_release_read(b->cells[i][c].cs_monitor);
+            rw_monitor_release_read(b->cells[i][c].val_monitor);
             continue;
+        }
         rw_monitor_release_read(b->cells[i][c].val_monitor);
 
         set_3 |= (r_cell.candidates & set_2);
@@ -364,11 +401,17 @@ void investigate_naked_pair_col(struct board *b,int c)
         odds ^= r_cell.candidates;
         DPRINTF("Current [%d] candidates %d\n",i,r_cell.candidates);
 
-        if (nc)
+        if (nc){
+
+            rw_monitor_release_read(b->cells[i][c].cs_monitor);
             continue;
+        }
 
         if (bit_count != 2)
+        {
+            rw_monitor_release_read(b->cells[i][c].cs_monitor);
             continue;
+        }
 
         for (int j=0;j<pairs_size;++j){
             if (pairs_array[j] == r_cell.candidates){
@@ -448,8 +491,11 @@ void investigate_naked_pair_box(struct board *b,int sqn)
             r_cell = b->cells[i][j];
             bit_count = popcount(r_cell.candidates);
 
-            if (r_cell.has_value)
+            if (r_cell.has_value){
+                rw_monitor_release_read(b->cells[i][j].cs_monitor);
+                rw_monitor_release_read(b->cells[i][j].val_monitor);
                 continue;
+            }
             rw_monitor_release_read(b->cells[i][j].val_monitor);
 
             set_3 |= (r_cell.candidates & set_2);
@@ -460,11 +506,15 @@ void investigate_naked_pair_box(struct board *b,int sqn)
             odds ^= r_cell.candidates;
             DPRINTF("Current [%d] candidates %d\n",i,r_cell.candidates);
 
-            if (nc)
+            if (nc){
+                rw_monitor_release_read(b->cells[i][j].cs_monitor);
                 continue;
+            }
 
-            if (bit_count != 2)
+            if (bit_count != 2){
+                rw_monitor_release_read(b->cells[i][j].cs_monitor);
                 continue;
+            }
 
             for (int j=0;j<pairs_size;++j){
                 if (pairs_array[j] == r_cell.candidates){
@@ -500,7 +550,7 @@ void investigate_naked_pair_box(struct board *b,int sqn)
             {
                 h_pairs_count++;
             }
-            rw_monitor_release_read(b->cells[i][j].val_monitor);
+            rw_monitor_release_read(b->cells[i][j].cs_monitor);
         }
     }
 
@@ -628,17 +678,18 @@ int investigate_square(struct board *b,int square_n)
     return 1;
 }
 
-int freeze_cell_state(struct board *b)
+int __freeze_cell_state(struct board *b)
 {
     struct cell cell;
     int bit_count;
     int has_changed = 0;
     int val;
-    //for (int bit_toleration = 1;bit_toleration<3;++bit_toleration){
     for (int i=0;i<MAX_NUM;++i){
         for (int j=0;j<MAX_NUM;++j){
+            DPRINTF("Requesting cell [%d][%d] locks\n",i,j);
             rw_monitor_request_read(b->cells[i][j].cs_monitor);
             rw_monitor_request_write(b->cells[i][j].val_monitor);
+            DPRINTF("Acquired cell [%d][%d] locks\n",i,j);
 
             cell = b->cells[i][j];
             bit_count = popcount(cell.candidates);
@@ -660,15 +711,130 @@ int freeze_cell_state(struct board *b)
             rw_monitor_release_write(b->cells[i][j].val_monitor);
         }
     }
-    //}
 
     return has_changed;
+}
+
+int freeze_cell_state(struct board *b,struct cell *cell)
+{
+    int bit_count;
+    int has_changed = 0;
+    int val;
+    rw_monitor_request_read(cell->cs_monitor);
+    rw_monitor_request_write(cell->val_monitor);
+    bit_count = popcount(cell->candidates);
+    if((!cell.has_value) && bit_count == 0){
+        DPRINTF("Found cell with 0 candidates, can't resolve the sudoku\n");
+        return 0;
+    }else if ((!cell.has_value) && bit_count == 1){
+        val = outer_bit_pos(cell.candidates) + 1;
+        DPRINTF("Found cell with 1 candidates, setting value %d\n",val);
+        cell->value = val;
+        cell->has_value = 1;
+        has_changed = 1;
+        rw_monitor_request_write(b->counter_monitor);
+        b->unset_cells--;
+        rw_monitor_release_write(b->counter_monitor);
+    }
+    rw_monitor_release_read(cell->cs_monitor);
+    rw_monitor_release_write(cell->val_monitor);
+
+    return has_changed;
+
+}
+
+void row_thread_target(void *args)
+{
+    struct board b = (struct board *)args;
+    int i;
+    int has_changed = 0;
+    while(has_changed){
+        for (i=0;i<MAX_NUM;++i){
+            investigate_row(b,i);
+            // Check for naked candidates
+        }
+        for (i=0;i<MAX_NUM;++i){
+            investigate_naked_pair_row(b,i);
+            // Check for naked candidates
+        }
+        pthread_barrier_wait(&b->investigation_barrier);
+        for (i=0;i<MAX_NUM;++i){
+            for(int j=0;j<3;++j){
+                DPRINTF("Analysing cell [%d][%d] for state consolidation\n",i,j);
+                has_changed |= freeze_cell_state(b,&b->cell[i][j]);
+            }
+        }
+        pthread_barrier_wait(&b->freeze_barrier);
+        pthread_mutex_lock(&b->change_lock);
+        b->has_changed = has_changed;
+        pthread_mutex_unlock(&b->change_lock);
+        DPRINTF("New board state\n");
+        DPRINT_BOARD(b);
+        has_changed = 0;
+    }
+    return
+}
+
+void col_thread_target(void *args)
+{
+    struct board b = (struct board *)args;
+    int has_changed = 0;
+    int i;
+    while(has_changed){
+        for (i=0;i<MAX_NUM;++i){
+            investigate_col(b,i);
+        }
+        for (i=0;i<MAX_NUM;++i){
+            investigate_naked_pair_col(b,i);
+        }
+        pthread_barrier_wait(&b->investigation_barrier);
+        for (i=0;i<MAX_NUM;++i){
+            for(int j=3;j<6;++j){
+                DPRINTF("Analysing cell [%d][%d] for state consolidation\n",i,j);
+                has_changed |= freeze_cell_state(b,&b->cell[i][j]);
+            }
+        }
+        pthread_barrier_wait(&b->freeze_barrier);
+        pthread_mutex_lock(&b->change_lock);
+        b->has_changed = has_changed;
+        pthread_mutex_unlock(&b->change_lock);
+        has_changed = 0;
+    }
+}
+
+void box_thread_target(void *args)
+{
+    struct board b = (struct board *)args;
+    int has_changed = 0;
+    int i;
+    while(has_changed){
+        for (i=0;i<MAX_NUM;++i){
+            investigate_square(b,i);
+        }
+        for (i=0;i<MAX_NUM;++i){
+            investigate_naked_pair_box(b,i);
+        }
+
+        pthread_barrier_wait(&b->investigation_barrier);
+        for (i=0;i<MAX_NUM;++i){
+            for(int j=6;j<MAX_NUM;++j){
+                DPRINTF("Analysing cell [%d][%d] for state consolidation\n",i,j);
+                has_changed |= freeze_cell_state(b,&b->cell[i][j]);
+            }
+        }
+        pthread_barrier_wait(&b->freeze_barrier);
+        pthread_mutex_lock(&b->change_lock);
+        b->has_changed = has_changed;
+        pthread_mutex_unlock(&b->change_lock);
+        has_changed = 0;
+    }
 }
 
 /*
  * Solves a board starting with the given cell. Returns 1 if the board could be
  * solved, 0 if not.
  */
+// TODO: create threadgroup with the resolutive triplet
 int solve_board(struct board *b)
 {
     int has_changed  = 1;
