@@ -1,7 +1,7 @@
 #ifndef P_SOLVER_H_V3
 #define P_SOLVER_H_V3
-
 #include "monitors.h"
+#include "pthread_groups.h"
 
 struct cell {
     int value;
@@ -38,5 +38,6 @@ struct naked_masks{
     int n_pair;
 };
 
-int sudoku_solver(int **grid, int n);
+struct ThreadGroup* parallel_sudoku_solver(int **grid, int n);
+int check_sudoku_solved(struct ThreadGroup*);
 #endif

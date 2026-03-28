@@ -15,6 +15,7 @@ struct ThreadGroup {
 	struct t_info t_comps[];
 };
 
+void destroy_threadgroup(struct ThreadGroup *tg);
 size_t get_threadgroup_size(struct ThreadGroup* tg);
 struct ThreadGroup* create_thread_group(void* (**t_targets)(void *),void* restrict args[],size_t tn);
 int join_thread_group(struct ThreadGroup* tg,void* outputs[]);

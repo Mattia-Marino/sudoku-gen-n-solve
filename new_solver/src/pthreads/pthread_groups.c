@@ -65,6 +65,10 @@ p_threadgroup *create_thread_group(target t_targets[], void* restrict args[], si
 	return tg;
 }
 
+void destroy_threadgroup(p_threadgroup *tg){
+    free(tg);
+}
+
 
 int cancel_thread_group(p_threadgroup *tg){
 	size_t len = tg->size;
