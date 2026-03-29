@@ -1,10 +1,14 @@
+#define _POSIX_C_SOURCE 200112L
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "../../include/debug.h"
-#include "../../include/solver_v3.h"
+#include "../../include/solver_parallel_v4.h"
 #include "../../include/bitarray.h"
+#include "../../include/pthread_groups.h"
+
 
 #define SUBDIMENSION	(3)
 #define MIN_NUM		(1)
@@ -19,6 +23,8 @@
 // Multipotent bitarray definition
 //
 const int MULTIPOTENT_CANDIDATES = 1 << (MAX_NUM - 1) | ((1<< (MAX_NUM - 1)) - 1 );
+typedef void *( *target )( void *);
+const int tg_size = 3;
 
 /*
  * Auxiliar. Calculates the square number for the given cell. Squares are
@@ -53,10 +59,17 @@ struct board *init_board()
 {
 	int i,j;
 	struct board *b;
+    pthread_barrier_t barrier;
+    pthread_mutex_t lock;
+    pthread_barrier_init(&barrier,NULL,tg_size);
+    pthread_mutex_init(&lock,NULL);
 
 	b = (struct board *) malloc(sizeof(struct board));
 	b->unset_cells = TOTAL_NUMS * TOTAL_NUMS;
 	b->cells = (struct cell **) malloc(MAX_NUM * sizeof(struct cell*));
+    b->step_barrier = barrier;
+    b->change_lock = lock;
+    b->has_changed = 1;
 
 	for (i = 0; i < MAX_NUM; ++i) {
 		b->cells[i] = (struct cell *) malloc(MAX_NUM * sizeof(struct cell));
@@ -128,6 +141,10 @@ void free_board(struct board *b)
 
 	for (i = 0; i < MAX_NUM; i++)
 		free(b->cells[i]);
+
+    pthread_barrier_destroy(&b->step_barrier);
+    pthread_mutex_destroy(&b->change_lock);
+
 
 	free(b->cells);
 	free(b);
@@ -578,87 +595,198 @@ int investigate_square(struct board *b,int square_n)
     return 1;
 }
 
-int freeze_cell_state(struct board *b)
+int freeze_cell_state(struct board *b,struct cell *cell)
 {
-    struct cell cell;
     int bit_count;
     int has_changed = 0;
     int val;
-    //for (int bit_toleration = 1;bit_toleration<3;++bit_toleration){
-    for (int i=0;i<MAX_NUM;++i){
-        for (int j=0;j<MAX_NUM;++j){
-            cell = b->cells[i][j];
-            bit_count = popcount(cell.candidates);
-            DPRINTF("Found cell [%d][%d]  with %d candidates\n",i,j,bit_count);
-            if((!cell.has_value) && bit_count == 0){
-                DPRINTF("Found cell [%d][%d]  with 0 candidates, can't resolve the sudoku\n",i,j);
-                return 0;
-            }else if ((!cell.has_value) && bit_count == 1){
-                val = outer_bit_pos(cell.candidates) + 1;
-                DPRINTF("Found cell [%d][%d]  with 1 candidates, setting value %d\n",i,j,val);
-                b->cells[i][j].value = val;
-                b->cells[i][j].has_value = 1;
-                has_changed = 1;
-                b->unset_cells--;
+    bit_count = popcount(cell->candidates);
+    if((!cell->has_value) && bit_count == 0){
+        DPRINTF("Found cell with 0 candidates, can't resolve the sudoku\n");
+        return 0;
+    }else if ((!cell->has_value) && bit_count == 1){
+        val = outer_bit_pos(cell->candidates) + 1;
+        DPRINTF("Found cell with 1 candidates, setting value %d\n",val);
+        cell->value = val;
+        cell->has_value = 1;
+        has_changed = 1;
+        pthread_mutex_lock(&b->change_lock);
+        b->unset_cells--;
+        pthread_mutex_unlock(&b->change_lock);
+    }
+    return has_changed;
+
+}
+
+void *first_target_investigator(void *args)
+{
+	struct timespec start_time, end_time;
+	clock_gettime(CLOCK_MONOTONIC, &start_time);
+    DPRINTF("Row started\n");
+    struct board *b = (struct board *)args;
+    int i;
+    int has_changed = 0;
+    while(b->has_changed){
+        for (i=0;i<3;++i){
+            DPRINTF("Investigating row [%d]\n",i);
+            investigate_row(b,i);
+            investigate_naked_pair_row(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=0;i<3;++i){
+            DPRINTF("Investigating col [%d]\n",i);
+            investigate_col(b,i);
+            investigate_naked_pair_col(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=0;i<3;++i){
+            DPRINTF("Investigating box [%d]\n",i);
+            investigate_square(b,i);
+            investigate_naked_pair_box(b,i);
+        }
+        b->has_changed = 0;
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=0;i<3;++i){
+            for(int j=0;j<MAX_NUM;++j){
+                DPRINTF("Analysing cell [%d][%d] for state consolidation\n",i,j);
+                has_changed |= freeze_cell_state(b,&b->cells[i][j]);
             }
         }
-    }
-    //}
-
-    return has_changed;
-}
-
-/*
- * Solves a board starting with the given cell. Returns 1 if the board could be
- * solved, 0 if not.
- */
-int solve_board(struct board *b)
-{
-    int has_changed  = 1;
-    while (has_changed)
-    {
-        for (int i=0;i<MAX_NUM;++i){
-            investigate_row(b,i);
-            investigate_col(b,i);
-            investigate_square(b,i);
-            // Check for naked candidates
-        }
-        for (int i=0;i<MAX_NUM;++i){
-            investigate_naked_pair_row(b,i);
-            investigate_naked_pair_col(b,i);
-            investigate_naked_pair_box(b,i);
-            // Check for naked candidates
-        }
-
-        has_changed = freeze_cell_state(b);
+        pthread_mutex_lock(&b->change_lock);
+        b->has_changed |= has_changed;
+        pthread_mutex_unlock(&b->change_lock);
+        has_changed = 0;
         DPRINTF("New board state\n");
         DPRINT_BOARD(b);
+        pthread_barrier_wait(&b->step_barrier);
     }
-    return b->unset_cells == 0;
+    DPRINTF("Exiting row investigator thread\n");
+	clock_gettime(CLOCK_MONOTONIC, &end_time);
+	double computation_time = (end_time.tv_sec - start_time.tv_sec) +
+					(end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+	printf("\nThread computation completed in %.6f seconds.\n", computation_time);
+    return (void*)b;
 }
 
-int sudoku_solver(int **grid, int n)
+void *second_target_investigator(void *args)
 {
-	int is_solved; /* Flag to check if is solved*/
-	struct board *b;
+    DPRINTF("Column started\n");
+    struct board *b = (struct board *)args;
+    int has_changed = 0;
+    int i;
+    while(b->has_changed){
+        for (i=3;i<6;++i){
+            DPRINTF("Investigating row [%d]\n",i);
+            investigate_row(b,i);
+            investigate_naked_pair_row(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=3;i<6;++i){
+            DPRINTF("Investigating col [%d]\n",i);
+            investigate_col(b,i);
+            investigate_naked_pair_col(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=3;i<6;++i){
+            DPRINTF("Investigating box [%d]\n",i);
+            investigate_square(b,i);
+            investigate_naked_pair_box(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        //printf("Col investigator is waiting other investigators\n");
+        for (i=3;i<6;++i){
+            for(int j=0;j<MAX_NUM;++j){
+                DPRINTF("Analysing cell [%d][%d] for state consolidation\n",i,j);
+                has_changed |= freeze_cell_state(b,&b->cells[i][j]);
+            }
+        }
+        pthread_mutex_lock(&b->change_lock);
+        b->has_changed |= has_changed;
+        pthread_mutex_unlock(&b->change_lock);
+        has_changed = 0;
+        pthread_barrier_wait(&b->step_barrier);
+    }
+    DPRINTF("Exiting col investigator thread\n");
+    return (void*)b;
+}
 
+void *third_target_investigator(void *args)
+{
+    DPRINTF("Box started\n");
+    struct board *b = (struct board *)args;
+    int has_changed = 0;
+    int i;
+    while(b->has_changed){
+        for (i=6;i<MAX_NUM;++i){
+            DPRINTF("Investigating row [%d]\n",i);
+            investigate_row(b,i);
+            investigate_naked_pair_row(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=6;i<MAX_NUM;++i){
+            DPRINTF("Investigating col [%d]\n",i);
+            investigate_col(b,i);
+            investigate_naked_pair_col(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        for (i=6;i<MAX_NUM;++i){
+            DPRINTF("Investigating box [%d]\n",i);
+            investigate_square(b,i);
+            investigate_naked_pair_box(b,i);
+        }
+        pthread_barrier_wait(&b->step_barrier);
+        //printf("Box investigator is waiting other investigators\n");
+        for (i=6;i<MAX_NUM;++i){
+            for(int j=0;j<MAX_NUM;++j){
+                DPRINTF("Analysing cell [%d][%d] for state consolidation\n",i,j);
+                has_changed |= freeze_cell_state(b,&b->cells[i][j]);
+            }
+        }
+        pthread_mutex_lock(&b->change_lock);
+        b->has_changed |= has_changed;
+        pthread_mutex_unlock(&b->change_lock);
+        has_changed = 0;
+        pthread_barrier_wait(&b->step_barrier);
+    }
+    DPRINTF("Exiting box investigator thread\n");
+    return (void*)b;
+}
+
+struct ThreadGroup *solve_board(struct board *b)
+{
+    target t_targets[tg_size]; 
+    void **args = (void **) malloc(tg_size * sizeof(void *));
+    t_targets[2] = &first_target_investigator;
+    t_targets[1] = &second_target_investigator;
+    t_targets[0] = &third_target_investigator;
+    args[0] = b;
+    args[1] = b;
+    args[2] = b;
+    struct ThreadGroup *thread_group = create_thread_group(t_targets, args, tg_size);
+    free(args);
+    return thread_group;
+}
+
+struct ThreadGroup *parallel_sudoku_solver(int **grid, int n){
+	struct board *b;
 	/* Create an extended grid */
 	b = init_board();
 	populate_board(b, grid);
 	DPRINT_BOARD(b);
 
+    return solve_board(b);
+}
 
-    is_solved = solve_board(b);
-
-    if (! is_solved){
-        printf("Sudoku not solved\n");
-        DPRINT_BOARD(b);
-    }
-	/* Convert in the original grid */
-	board_to_grid(b, grid);
-
+int check_sudoku_solved(struct ThreadGroup *workers)
+{
+    //printf("Checking sudoku\n");
+    const void *outputs[3];
+    struct board *b;
+    join_thread_group(workers, outputs);
+    b = (struct board*)outputs[0];
+    int sudoku_solved = b->unset_cells == 0;
+    DPRINT_BOARD(b);
 	/* Free everything */
 	free_board(b);
-
-	return 0;
+    return sudoku_solved;
 }

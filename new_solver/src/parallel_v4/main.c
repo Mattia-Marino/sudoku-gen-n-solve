@@ -1,7 +1,6 @@
+
 /* SPDX-License-Identifier: GPL-3.0 */
-
-#define _POSIX_C_SOURCE 199309L
-
+#define _POSIX_C_SOURCE 200112L
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,7 +10,7 @@
 #include <string.h>
 
 #include "../../include/debug.h"
-#include "../../include/solver_v3.h"
+#include "../../include/solver_parallel_v4.h"
 #include "../../include/sudoku_utils.h"
 
 int main(int argc, char **argv)
@@ -19,10 +18,14 @@ int main(int argc, char **argv)
 	/* Parsing and Processing */
 	char *filename = NULL;
 	FILE *file;
+    int i = 0;
 	int opt;
-	int sudoku_size;
+	int sudoku_size = 9;
 	int **grid;
+    struct ThreadGroup **tgs;
 	int read_status;
+	int total_lines = 0;
+    int actual_tgs;
 
 	/* Post-processing */
 	int tot_solved;
@@ -30,9 +33,8 @@ int main(int argc, char **argv)
 	/* Timing */
 	struct timespec start_time, end_time;
 	double computation_time;
+    
 
-	/* Default sudoku size */
-	sudoku_size = 9;
 
 	/* ******************************************************************
 	* ALL RANKS: ARGUMENT PARSING
@@ -79,56 +81,60 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+    total_lines = count_lines_in_file(file);
+    tgs = malloc(sizeof(struct ThreadGroup*)*total_lines);
+
 	/* Start timing the computation */
 	clock_gettime(CLOCK_MONOTONIC, &start_time);
-
 	tot_solved = 0;
 	while (1) {
-		/* Allocate memory for the Sudoku grid */
-		grid = create_grid(sudoku_size);
-		if (grid == NULL) {
-			fprintf(stderr, "Error: Failed to allocate memory for grid\n");
-			fclose(file);
-			return 1;
-		}
+        /* Allocate memory for the Sudoku grid */
+        grid = create_grid(sudoku_size);
+        if (grid == NULL) {
+            fprintf(stderr, "Error: Failed to allocate memory for grid\n");
+            fclose(file);
+            return 1;
+        }
 
-		/* Read the Sudoku grid from the file */
-		read_status = read_grid_from_file(grid, file, sudoku_size);
+        /* Read the Sudoku grid from the file */
+        read_status = read_grid_from_file(grid, file, sudoku_size);
 
-		if (read_status != 0) {
-			/* If read failed because we reached EOF */
-			if (feof(file)) {
-				DPRINTF("Reached EOF\n");
-				break;
-			} else {
-				fprintf(stderr, "Error: Failed to read grid from file\n");
-				free_grid(grid, sudoku_size);
-				fclose(file);
-				return 1;
-			}
-		}
+        if (read_status != 0) {
+            /* If read failed because we reached EOF */
+            if (feof(file)) {
+                DPRINTF("Reached EOF\n");
+                break;
+            } else {
+                fprintf(stderr, "Error: Failed to read grid from file\n");
+                free_grid(grid, sudoku_size);
+                fclose(file);
+                return 1;
+            }
+        }
 
-		/* Display the given Sudoku grid */
-		DPRINTF("\nGiven Sudoku grid:\n");
-		DPRINT_SUDOKU(grid, sudoku_size);
-		DPRINTF("\n\n\n");
+        /* Display the given Sudoku gridj*/
+        DPRINTF("\nGiven Sudoku grid:\n");
+        DPRINT_SUDOKU(grid, sudoku_size);
+        DPRINTF("\n\n\n");
 
-		/* Solve the sudoku */
-		DPRINTF("Solving the sudoku...\n\n");
-		sudoku_solver(grid, sudoku_size);
+        /* Solve the sudoku */
+        DPRINTF("Solving the sudoku...\n\n");
+        tgs[i++] = parallel_sudoku_solver(grid, sudoku_size);
 
-		DPRINTF("The proposed grid:\n");
-		DPRINT_SUDOKU(grid, sudoku_size);
+        DPRINTF("The proposed grid:\n");
+        DPRINT_SUDOKU(grid, sudoku_size);
 
-		DPRINTF("\n\n--------------------\n\n");
-
-		if (check_solved(grid, sudoku_size))
-			++tot_solved;
-
-		/* Free the grid */
-		free_grid(grid, sudoku_size);
+        DPRINTF("\n\n--------------------\n\n");
+        free_grid(grid, sudoku_size);
 	}
 
+    //printf("Checking %d sudokus\n",total_lines);
+    for (i=0;i<total_lines;++i){
+        //printf("Checking sudoku %d\n",i);
+        if (check_sudoku_solved(tgs[i]))
+            ++tot_solved;
+        //destroy_threadgroup(tgs[i]);
+    }
 	/* End timing */
 	clock_gettime(CLOCK_MONOTONIC, &end_time);
 	computation_time = (end_time.tv_sec - start_time.tv_sec) +
@@ -136,6 +142,7 @@ int main(int argc, char **argv)
 	printf("\nTotal computation completed in %.6f seconds.\n", computation_time);
 
 	printf("Sudokus completely solved: %d\n\n", tot_solved);
+    //free(tgs);
 
 	/* Free allocated resources */
 	fclose(file);
