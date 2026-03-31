@@ -10,6 +10,10 @@
 #include <mpi.h>
 #include <string.h>
 
+#ifdef USE_MPE
+#include <mpe.h>
+#endif
+
 #include "../../include/pthread_groups.h"
 #include "../../include/queue.h"
 #include "../../include/sudoku_utils.h"
@@ -90,10 +94,33 @@ int main(int argc, char **argv)
 	struct timespec ts;
 	struct timespec ts_start;
 
+	/* MPE Variables */
+	#ifdef USE_MPE
+		int ev_read_b,   ev_read_e;
+		int ev_solve_b,  ev_solve_e;
+		int ev_gather_b, ev_gather_e;
+	#endif
+
 	/* Initialize MPI */
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	#ifdef USE_MPE
+		MPE_Init_log();
+		
+		ev_read_b   = MPE_Log_get_event_number();
+    		ev_read_e   = MPE_Log_get_event_number();
+    		ev_solve_b  = MPE_Log_get_event_number();
+    		ev_solve_e  = MPE_Log_get_event_number();
+    		ev_gather_b = MPE_Log_get_event_number();
+    		ev_gather_e = MPE_Log_get_event_number();
+
+    		MPE_Describe_state(ev_read_b,   ev_read_e,   "Local file read/parse", "blue");
+    		MPE_Describe_state(ev_solve_b,  ev_solve_e,  "Local solve",           "green");
+    		MPE_Describe_state(ev_gather_b, ev_gather_e, "Gather results",        "red");
+	#endif
+	
 
 	/* Default sudoku size */
 	sudoku_size = 9;
@@ -297,6 +324,9 @@ int main(int argc, char **argv)
 	printf("[%3.6f] - Rank %d - I have %d threads\n", computation_time, rank, local_threads);
 
 	if (local_threads > 0 && local_num_lines > 0) {
+		#ifdef USE_MPE
+        		MPE_Log_event(ev_read_b, rank, "read_start");
+		#endif
 		/* Open file and seek to our starting position */
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
@@ -332,6 +362,10 @@ int main(int argc, char **argv)
 		}
 		fclose(file);
 
+		#ifdef USE_MPE
+        		MPE_Log_event(ev_read_e, rank, "read_end");
+		#endif
+
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
 		printf("[%3.6f] - Rank %d - Closing file\n", computation_time, rank);
@@ -357,11 +391,19 @@ int main(int argc, char **argv)
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
 		printf("[%3.6f] - Rank %d - Starting processing\n", computation_time, rank);
 
+		#ifdef USE_MPE
+        		MPE_Log_event(ev_solve_b, rank, "solve_start");
+		#endif
+
 		/* Launch Threads */
 		t_targets = (target *) malloc(local_threads * sizeof(target));
 		for (i = 0; i < local_threads; ++i) t_targets[i] = &pthreads_solver;
 		tg = create_thread_group(t_targets, NULL, local_threads);
 		join_thread_group(tg, outputs);
+
+		#ifdef USE_MPE
+       			MPE_Log_event(ev_solve_e, rank, "solve_end");
+		#endif
 
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		computation_time = (ts.tv_sec - ts_start.tv_sec) + (ts.tv_nsec - ts_start.tv_nsec) / 1e9;
@@ -392,6 +434,10 @@ int main(int argc, char **argv)
 		/* No work for this rank */
 		local_output_buffer = (char *) malloc(1);
 	}
+
+	#ifdef USE_MPE
+    		MPE_Log_event(ev_gather_b, rank, "gather_start");
+	#endif
 
 	/* ******************************************************************
 	* GATHER RESULTS
@@ -468,6 +514,11 @@ int main(int argc, char **argv)
 			free(final_output_buffer);
 		}
 	}
+
+	#ifdef USE_MPE
+    		MPE_Log_event(ev_gather_e, rank, "gather_end");
+    		MPE_Finish_log("sudoku_mpe");
+	#endif
 
 	if (local_output_buffer) free(local_output_buffer);
 

@@ -1,9 +1,25 @@
 # Compiler and flags
 CC := gcc
 MPICC := mpicc
+MPECC := mpecc
 CFLAGS := -Wall -Wextra -std=c99 -pedantic -Iinclude -O3
 LDFLAGS := -lm
 PTHREAD_FLAG := -lpthread
+
+# Optional MPE instrumentation
+USE_MPE ?= 0
+MPE_CFLAGS := 
+MPE_LDFLAGS := 
+MPE_TRACE_FLAGS :=
+MPI_WRAPPER := $(MPICC)
+
+ifeq ($(USE_MPE), 1)
+    MPI_WRAPPER := $(MPECC)
+    MPE_TRACE_FLAGS := -mpilog
+    MPE_CFLAGS := -DUSE_MPE
+    # usually not needed with mpecc, but keep optional:
+    # MPE_LDFLAGS := -lmpe
+endif
 
 # Program names
 SERIAL_PROGRAM := serial_sudoku_solver
@@ -126,15 +142,15 @@ $(BUILD_DIR)/$(SERIAL_V3_DIR)/%.o: $(SRC_DIR)/$(SERIAL_V3_DIR)/%.c | $(BUILD_DIR
 
 # Pattern rule for parallel object files (V1)
 $(BUILD_DIR)/$(PARALLEL_DIR_V1)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V1)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V1)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPI_WRAPPER) $(PTHREAD_FLAG) $(CFLAGS) $(MPE_CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V2)
 $(BUILD_DIR)/$(PARALLEL_DIR_V2)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V2)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V2)
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPI_WRAPPER) $(PTHREAD_FLAG) $(CFLAGS) $(MPE_CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Pattern rule for parallel object files (V3)
 $(BUILD_DIR)/$(PARALLEL_DIR_V3)/%.o: $(SRC_DIR)/$(PARALLEL_DIR_V3)/%.c | $(BUILD_DIR)/$(PARALLEL_DIR_V3)
-	$(CC) $(PTHREAD_FLAG)  $(CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
+	$(MPI_WRAPPER) $(PTHREAD_FLAG) $(CFLAGS) $(MPE_CFLAGS) -I$(INCLUDE_DIR) -MMD -MP -c $< -o $@
 
 # Link the serial program
 $(SERIAL_OUTPUT): $(SERIAL_OBJS)
@@ -154,17 +170,18 @@ $(SERIAL_OUTPUT_V3): $(SERIAL_OBJS_V3)
 # Link the parallel program (V1)
 $(PARALLEL_OUTPUT_V1): $(PARALLEL_OBJS_V1)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPI_WRAPPER) $(MPE_TRACE_FLAGS) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) $(MPE_LDFLAGS) -o $@
 
 # Link the parallel program (V2)
 $(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
+$(PARALLEL_OUTPUT_V2): $(PARALLEL_OBJS_V2)
 	@mkdir -p "$(BINDIR)"
-	$(MPICC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPI_WRAPPER) $(MPE_TRACE_FLAGS) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) $(MPE_LDFLAGS) -o $@
 
 # Link the parallel program (V3)
 $(PARALLEL_OUTPUT_V3): $(PARALLEL_OBJS_V3)
 	@mkdir -p "$(BINDIR)"
-	$(CC) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	$(MPI_WRAPPER) $(MPE_TRACE_FLAGS) $(PTHREAD_FLAG) $(CFLAGS) $^ $(LDFLAGS) $(MPE_LDFLAGS) -o $@
 
 # Clean build files
 clean:
