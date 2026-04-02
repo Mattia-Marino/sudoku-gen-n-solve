@@ -22,6 +22,9 @@ parallel_sudoku_solver*
 serial_sudoku_generator
 parallel_sudoku_generator
 
+# MPE files
+*.clog2
+
 # Compiler generated files
 *.stackdump
 

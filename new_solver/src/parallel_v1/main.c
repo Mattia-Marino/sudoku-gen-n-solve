@@ -107,7 +107,7 @@ int main(int argc, char **argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 	#ifdef USE_MPE
-		MPE_Init_log();
+		/* MPE_Init_log(); */
 		
 		ev_read_b   = MPE_Log_get_event_number();
     		ev_read_e   = MPE_Log_get_event_number();
@@ -517,7 +517,7 @@ int main(int argc, char **argv)
 
 	#ifdef USE_MPE
     		MPE_Log_event(ev_gather_e, rank, "gather_end");
-    		MPE_Finish_log("sudoku_mpe");
+    		/* MPE_Finish_log("sudoku_mpe"); */
 	#endif
 
 	if (local_output_buffer) free(local_output_buffer);

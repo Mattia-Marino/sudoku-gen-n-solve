@@ -190,6 +190,7 @@ clean:
 	rm -f $(BINDIR)/$(PARALLEL_PROGRAM_V1)
 	rm -f $(BINDIR)/$(PARALLEL_PROGRAM_V2)
 	rm -f $(BINDIR)/$(PARALLEL_PROGRAM_V3)
+	rm -f *.clog2
 	rm -f $(SERIAL_OBJS) $(SERIAL_OBJS:.o=.d)
 	rm -f $(SERIAL_OBJS_V2) $(SERIAL_OBJS_V2:.o=.d)
 	rm -f $(SERIAL_OBJS_V3) $(SERIAL_OBJS_V3:.o=.d)
