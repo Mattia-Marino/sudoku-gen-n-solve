@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <math.h>
@@ -12,6 +13,65 @@
 
 #ifdef USE_MPE
 #include <mpe.h>
+#endif
+
+#ifdef USE_PAPI
+
+#include <papi.h>
+#define MAX_PAPI_EVENTS 8
+
+/* We use global variables to track PAPI events and values across threads */ 
+static int g_papi_event_codes[MAX_PAPI_EVENTS];
+static const char *g_papi_event_names[MAX_PAPI_EVENTS];
+static int g_papi_num_events = 0;
+static long long g_papi_rank_totals[MAX_PAPI_EVENTS] = {0};
+static pthread_mutex_t g_papi_lock = PTHREAD_MUTEX_INITIALIZER;
+
+const PAPI_hw_info_t *hwinfo = NULL;
+
+static int add_papi_event_if_available(int event_code, const char *event_name)
+{
+	int probe_set = PAPI_NULL;
+
+	if (g_papi_num_events >= MAX_PAPI_EVENTS) return 0;
+	if (PAPI_query_event(event_code) != PAPI_OK) return 0;
+
+	if (PAPI_create_eventset(&probe_set) != PAPI_OK) return 0;
+    	if (PAPI_add_event(probe_set, event_code) != PAPI_OK) {
+        	PAPI_cleanup_eventset(probe_set);
+        	PAPI_destroy_eventset(&probe_set);
+        	return 0;
+    	}
+
+	g_papi_event_codes[g_papi_num_events] = event_code;
+	g_papi_event_names[g_papi_num_events] = event_name;
+	g_papi_num_events++;
+	return 1;
+}
+
+static unsigned long papi_thread_id_fn(void) { 
+	return (unsigned long)(uintptr_t)pthread_self(); 
+}
+
+static void print_papi_hw_info(int rank)
+{
+	if (rank != 0) return;
+	hwinfo = PAPI_get_hardware_info();
+
+	if(!hwinfo){
+		printf("PAPI Hardware Info: Not available\n");
+		return;
+	}else{
+		printf("PAPI Hardware Info:\n");
+		printf("  Vendor: %s\n", hwinfo->vendor_string);
+		printf("  Model: %s\n", hwinfo->model_string);
+		printf("  CPU MHz: %.2f\n", hwinfo->mhz);
+		printf("  ncpu: %d\n", hwinfo->ncpu);
+		printf("  nnodes: %d\n", hwinfo->nnodes);
+		printf("  totalcpus: %d\n", hwinfo->totalcpus);
+	}
+}
+
 #endif
 
 #include "../../include/pthread_groups.h"
@@ -39,6 +99,22 @@ void *pthreads_solver()
 	int i;
 	range r;
 
+	#ifdef USE_PAPI
+		int evset = PAPI_NULL;
+		long long vals[MAX_PAPI_EVENTS] ={0};
+		PAPI_register_thread();
+		if(g_papi_num_events > 0  && PAPI_create_eventset(&evset) == PAPI_OK){
+			for(i = 0; i < g_papi_num_events; i++) {
+				(void)PAPI_add_event(evset, g_papi_event_codes[i]);
+			}
+			if(PAPI_start(evset) != PAPI_OK) {
+				PAPI_cleanup_eventset(evset);
+				PAPI_destroy_eventset(&evset);
+				evset = PAPI_NULL;
+			}
+		}
+	#endif
+
 	if (!isEmpty(q_range)) {
 		/* Fetch the range */
 		dequeue(q_range, &r);
@@ -49,8 +125,28 @@ void *pthreads_solver()
 				sudoku_solver(all_grids[i], sudoku_size);
 	}
 
+	#ifdef USE_PAPI
+		if (evset != PAPI_NULL) {
+			if(PAPI_stop(evset, vals) == PAPI_OK) {;
+
+				/* Aggregate values into global totals with mutex protection */
+				pthread_mutex_lock(&g_papi_lock);
+				for (i = 0; i < g_papi_num_events; i++) {
+					g_papi_rank_totals[i] += vals[i];
+				}
+				pthread_mutex_unlock(&g_papi_lock);
+			}
+
+			PAPI_cleanup_eventset(evset);
+			PAPI_destroy_eventset(&evset);
+		}
+		PAPI_unregister_thread();
+	#endif
+
 	return NULL;
 }
+
+
 
 int main(int argc, char **argv)
 {
@@ -119,6 +215,34 @@ int main(int argc, char **argv)
     		MPE_Describe_state(ev_read_b,   ev_read_e,   "Local file read/parse", "blue");
     		MPE_Describe_state(ev_solve_b,  ev_solve_e,  "Local solve",           "green");
     		MPE_Describe_state(ev_gather_b, ev_gather_e, "Gather results",        "red");
+	#endif
+
+	#ifdef USE_PAPI
+		if (PAPI_library_init(PAPI_VER_CURRENT) != PAPI_VER_CURRENT) {
+			if (rank == 0)
+				fprintf(stderr, "PAPI init failed\n");
+			MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+			return EXIT_FAILURE;	
+		}
+
+		if (PAPI_thread_init(papi_thread_id_fn) != PAPI_OK) {
+			if (rank == 0)
+				fprintf(stderr, "PAPI thread init failed\n");
+			MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+			return EXIT_FAILURE;	
+		}
+
+		add_papi_event_if_available(PAPI_TOT_CYC, "PAPI_TOT_CYC");
+		add_papi_event_if_available(PAPI_TOT_INS, "PAPI_TOT_INS");
+		add_papi_event_if_available(PAPI_LD_INS, "PAPI_LD_INS");
+		add_papi_event_if_available(PAPI_SR_INS, "PAPI_SR_INS");
+		add_papi_event_if_available(PAPI_L1_DCM, "PAPI_L1_DCM");
+		add_papi_event_if_available(PAPI_L2_DCM, "PAPI_L2_DCM");
+		add_papi_event_if_available(PAPI_L3_TCM, "PAPI_L3_TCM");
+		add_papi_event_if_available(PAPI_TLB_DM, "PAPI_TLB_DM");
+
+		if (rank == 0) printf("PAPI enabled: %d events active\n", g_papi_num_events);
+		print_papi_hw_info(rank);
 	#endif
 	
 
@@ -376,11 +500,15 @@ int main(int argc, char **argv)
 			int load;
 			int base_load = local_num_lines / local_threads;
 			int rem_load = local_num_lines % local_threads;
+			int next_start = 0;
+
 			for (i = 0; i < local_threads; ++i) {
 				load = base_load + (i < rem_load ? 1 : 0);
 
-				r.start = i * load;
-				r.end = r.start + load - 1;
+				/* Changed this to avoid overlaps*/
+				r.start = next_start;
+				r.end = next_start + load - 1;
+				next_start += load;
 
 				enqueue(q_range, &r);
 			}
@@ -518,6 +646,73 @@ int main(int argc, char **argv)
 	#ifdef USE_MPE
     		MPE_Log_event(ev_gather_e, rank, "gather_end");
     		/* MPE_Finish_log("sudoku_mpe"); */
+	#endif
+
+	#ifdef USE_PAPI
+		long long local_vals[MAX_PAPI_EVENTS] = {0};
+		long long global_sums[MAX_PAPI_EVENTS] = {0};
+		int sender;
+
+		for (i = 0; i < g_papi_num_events; i++){
+			local_vals[i] = g_papi_rank_totals[i];
+		}
+
+		if(rank == 0){
+			long long tot_cyc = 0, tot_ins = 0, ld_ins = 0, sr_ins = 0;
+			long long l1_dcm = 0, l2_dcm = 0, l3_tcm = 0, tlb_dm = 0;
+			
+			for (i = 0; i < g_papi_num_events; i++){
+				global_sums[i] = local_vals[i];
+			}
+
+			for (sender = 1; sender < size; sender++) {
+				long long recv_vals[MAX_PAPI_EVENTS] = {0};
+				MPI_Recv(recv_vals, g_papi_num_events, MPI_LONG_LONG, sender, 777, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				
+				for (i = 0; i < g_papi_num_events; i++){
+					global_sums[i] += recv_vals[i];
+				}
+			}
+
+			for (i = 0; i < g_papi_num_events; i++){
+				long long avg_rank = (size > 0) ? (global_sums[i] / size) : 0;
+            			long long avg_thread = (total_threads_requested > 0)? (global_sums[i] / total_threads_requested): 0;
+
+				printf("PAPI Event %s: Total = %lld\n", g_papi_event_names[i], global_sums[i]);
+                		printf("PAPI Event %s: Average per rank = %lld\n", g_papi_event_names[i], avg_rank);
+                		printf("PAPI Event %s: Average per thread = %lld\n", g_papi_event_names[i], avg_thread);
+
+				printf("PAPI Event %s: Total = %lld\n", g_papi_event_names[i], global_sums[i]);
+				printf("PAPI Event %s: Average per rank = %lld\n", g_papi_event_names[i], global_sums[i] / size);
+				printf("PAPI Event %s: Average per thread = %lld\n", g_papi_event_names[i],
+					(total_threads_requested > 0) ? (global_sums[i] / total_threads_requested) : 0);
+
+				if (strcmp(g_papi_event_names[i], "PAPI_TOT_CYC") == 0) tot_cyc = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_TOT_INS") == 0) tot_ins = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_LD_INS") == 0) ld_ins = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_SR_INS") == 0) sr_ins = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_L1_DCM") == 0) l1_dcm = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_L2_DCM") == 0) l2_dcm = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_L3_TCM") == 0) l3_tcm = global_sums[i];
+				else if (strcmp(g_papi_event_names[i], "PAPI_TLB_DM") == 0) tlb_dm = global_sums[i];
+			}
+
+			printf("\nDerived metrics:\n");
+			if (tot_cyc > 0 && tot_ins > 0) {
+				printf("IPC = %.4f\n", (double)tot_ins / (double)tot_cyc);
+				printf("L1 Miss Rate = %.4f%%\n", 100.0 * (double)l1_dcm / (double)tot_ins);
+				printf("L2 Miss Rate = %.4f%%\n", 100.0 * (double)l2_dcm / (double)tot_ins);
+				printf("L3 Miss Rate = %.4f%%\n", 100.0 * (double)l3_tcm / (double)tot_ins);
+				printf("TLB Miss Rate = %.4f%%\n", 100.0 * (double)tlb_dm / (double)tot_ins);
+			}
+			if (sr_ins > 0) {
+				printf("Load/Store Ratio = %.4f\n", (double)ld_ins / (double)sr_ins);
+			}
+		}else {
+            		MPI_Send(local_vals, g_papi_num_events, MPI_LONG_LONG, 0, 777, MPI_COMM_WORLD);
+		}
+
+		PAPI_shutdown();
 	#endif
 
 	if (local_output_buffer) free(local_output_buffer);
