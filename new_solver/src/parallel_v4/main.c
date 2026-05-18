@@ -82,7 +82,7 @@ int main(int argc, char **argv)
 	}
 
     total_lines = count_lines_in_file(file);
-    tgs = malloc(sizeof(struct ThreadGroup*)*total_lines);
+    //tgs = malloc(sizeof(struct ThreadGroup*)*total_lines);
 
 	/* Start timing the computation */
 	clock_gettime(CLOCK_MONOTONIC, &start_time);
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 
         /* Solve the sudoku */
         DPRINTF("Solving the sudoku...\n\n");
-        tgs[i++] = parallel_sudoku_solver(grid, sudoku_size);
+        parallel_sudoku_solver(grid, sudoku_size);
 
         DPRINTF("The proposed grid:\n");
         DPRINT_SUDOKU(grid, sudoku_size);
@@ -128,13 +128,26 @@ int main(int argc, char **argv)
         free_grid(grid, sudoku_size);
 	}
 
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    computation_time = (end_time.tv_sec - start_time.tv_sec) +
+    (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+    printf("\nGrids solution init completed in %.6f seconds.\n", computation_time);
+
+    // sleep(5);
+    while(COMPLETED_SUDOKUS != total_lines){
+        sleep(.001);
+        }
+    tot_solved = RESOLVED_SUDOKUS;
+
     //printf("Checking %d sudokus\n",total_lines);
-    for (i=0;i<total_lines;++i){
-        //printf("Checking sudoku %d\n",i);
-        if (check_sudoku_solved(tgs[i]))
-            ++tot_solved;
-        //destroy_threadgroup(tgs[i]);
-    }
+    // for (i=0;i<total_lines;++i){
+    //     //printf("Checking sudoku %d\n",i);
+    //     if (check_sudoku_solved(tgs[i])){
+    //         printf("Solved sudoku %d\n",i);
+    //         ++tot_solved;
+    //     }
+    //     //destroy_threadgroup(tgs[i]);
+    // }
 	/* End timing */
 	clock_gettime(CLOCK_MONOTONIC, &end_time);
 	computation_time = (end_time.tv_sec - start_time.tv_sec) +

@@ -2,6 +2,8 @@
 #ifndef SOLVER_H_V4
 #define SOLVER_H_V4
 #include "pthread_groups.h"
+extern int COMPLETED_SUDOKUS;
+extern int RESOLVED_SUDOKUS;
 
 struct cell {
     int value;

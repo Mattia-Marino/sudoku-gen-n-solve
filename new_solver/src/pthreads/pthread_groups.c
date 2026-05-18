@@ -33,11 +33,12 @@ typedef struct ThreadGroup{
 
 static pthread_mutex_t count_lock = PTHREAD_MUTEX_INITIALIZER;
 
-p_threadgroup *create_thread_group(target t_targets[], void* restrict args[], size_t tn)
+p_threadgroup *create_thread_group(target t_targets[],int detached, void* restrict args[], size_t tn)
 {
 	size_t i;
 	int ret;
 	p_threadgroup *tg = malloc(sizeof(*tg) + sizeof(t_info) * tn);
+    pthread_attr_t attr;
 	pthread_t tmp_thread;
 	t_info tmp_info;
 
@@ -46,12 +47,16 @@ p_threadgroup *create_thread_group(target t_targets[], void* restrict args[], si
 	tg->groupId = tg_count++;
 	tg->size = (unsigned int)tn;
 	pthread_mutex_unlock(&count_lock);
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr,PTHREAD_CREATE_JOINABLE);
+    if (detached != 0)
+        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	for(i = 0; i < tn; ++i){
 		DPRINTF("Creating thread number %ld\n",i);
 		tmp_info.thread_num = i;
 		void *arg = (args != NULL) ? args[i] : NULL;
-		ret = pthread_create(&tmp_thread, NULL, t_targets[i], arg);
+		ret = pthread_create(&tmp_thread, &attr, t_targets[i], arg);
 		if (ret != 0){
 			handle_error("pthread_create");
 		}

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <pthread.h>
 
 #include "../../include/debug.h"
 #include "../../include/solver_parallel_v4.h"
@@ -25,6 +26,9 @@
 const int MULTIPOTENT_CANDIDATES = 1 << (MAX_NUM - 1) | ((1<< (MAX_NUM - 1)) - 1 );
 typedef void *( *target )( void *);
 const int tg_size = 3;
+int COMPLETED_SUDOKUS = 0;
+int RESOLVED_SUDOKUS = 0;
+pthread_mutex_t solve_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  * Auxiliar. Calculates the square number for the given cell. Squares are
@@ -620,8 +624,8 @@ int freeze_cell_state(struct board *b,struct cell *cell)
 
 void *first_target_investigator(void *args)
 {
-	struct timespec start_time, end_time;
-	clock_gettime(CLOCK_MONOTONIC, &start_time);
+	// struct timespec start_time, end_time;
+	// clock_gettime(CLOCK_MONOTONIC, &start_time);
     DPRINTF("Row started\n");
     struct board *b = (struct board *)args;
     int i;
@@ -661,10 +665,15 @@ void *first_target_investigator(void *args)
         pthread_barrier_wait(&b->step_barrier);
     }
     DPRINTF("Exiting row investigator thread\n");
-	clock_gettime(CLOCK_MONOTONIC, &end_time);
-	double computation_time = (end_time.tv_sec - start_time.tv_sec) +
-					(end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-	printf("\nThread computation completed in %.6f seconds.\n", computation_time);
+    pthread_mutex_lock(&solve_lock);
+    COMPLETED_SUDOKUS++;
+    if (b->unset_cells == 0)
+        RESOLVED_SUDOKUS++;
+    pthread_mutex_unlock(&solve_lock);
+	// clock_gettime(CLOCK_MONOTONIC, &end_time);
+	// double computation_time = (end_time.tv_sec - start_time.tv_sec) +
+	//  				(end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+	// printf("\nThread computation completed in %.6f seconds.\n", computation_time);
     return (void*)b;
 }
 
@@ -755,15 +764,14 @@ void *third_target_investigator(void *args)
 struct ThreadGroup *solve_board(struct board *b)
 {
     target t_targets[tg_size]; 
-    void **args = (void **) malloc(tg_size * sizeof(void *));
+    void *args[3];
     t_targets[2] = &first_target_investigator;
     t_targets[1] = &second_target_investigator;
     t_targets[0] = &third_target_investigator;
     args[0] = b;
     args[1] = b;
     args[2] = b;
-    struct ThreadGroup *thread_group = create_thread_group(t_targets, args, tg_size);
-    free(args);
+    struct ThreadGroup *thread_group = create_thread_group(t_targets,1,args, tg_size);
     return thread_group;
 }
 
